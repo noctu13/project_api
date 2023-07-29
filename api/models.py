@@ -1,6 +1,6 @@
 from django.db import models
 
-class Events(model.Model):
+class Events(models.Model):
     name = models.CharField(max_length=50)
     date = models.DateTimeField()
     type = models.CharField(max_length=20)
