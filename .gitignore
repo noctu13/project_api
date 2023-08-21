@@ -1,5 +1,6 @@
 __pycache__/
 migrations/
 .env
+.vs
 .pg_service.conf
 .my_pgpass
