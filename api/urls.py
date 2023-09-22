@@ -1,10 +1,9 @@
 from django.urls import path, include
-from rest_framework.routers import SimpleRouter
 
-from .views import CoronalHolesView, PFSSMagneticLinesView
+from .views import EventsView
 
 
 urlpatterns = [
-    path('events/CH/', CoronalHolesView.as_view()),
-    path('events/ML/', PFSSMagneticLinesView.as_view())
+    path('events/<str:short_type>/<int:year>/<int:month>/<int:day>/', EventsView.as_view()),
+    path('events/<str:short_type>/', EventsView.as_view()),
 ]
