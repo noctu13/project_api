@@ -1,15 +1,11 @@
 from django.urls import path, include
-from rest_framework.routers import DefaultRouter
+from rest_framework.routers import SimpleRouter
 
-from api.models import Event, Polyline, Point
-
-from .views import EventViewSet, PolylineViewSet, PointViewSet
+from .views import EventViewSet
 
 
-router = DefaultRouter()
-router.register('events', EventViewSet, basename='events')
-router.register('polylines', PolylineViewSet, basename='polylines')
-router.register('points', PointViewSet, basename='points')
+router = SimpleRouter()
+router.register('events', EventViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),
