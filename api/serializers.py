@@ -2,30 +2,30 @@ from rest_framework import serializers
 from .models import Event, Polyline, Point
 
 
-class EventSerializer(serializers.ModelSerializer):
-    polyline = serializers.PrimaryKeyRelatedField(
-        queryset=Polyline.objects.all(),
-        many=True,
-    )
-
-    class Meta:
-        model = Event
-        fields = ['type', 'start_time', 'end_time', 'polyline']
-
-
-class PolylineSerializer(serializers.ModelSerializer):
-    points = serializers.PrimaryKeyRelatedField(
-        queryset=Point.objects.all(),
-        many=True,
-    )
-
-    class Meta:
-        model = Polyline
-        fields = ['event', 'start_time', 'end_time', 'points']
-
-
 class PointSerializer(serializers.ModelSerializer):
-
+    
     class Meta:
         model = Point
-        fields = '__all__'
+        fields = ("theta", "phi", "r")
+        
+
+class PolylineSerializer(serializers.ModelSerializer):
+    points = PointSerializer(
+        many=True,
+        read_only=True,
+    )
+    
+    class Meta:
+        model = Polyline
+        fields = ("id", "start_time", "end_time", "points")
+
+
+class EventSerializer(serializers.ModelSerializer):
+    polyline = PolylineSerializer(
+        many=True,
+        read_only=True,
+    )
+    
+    class Meta:
+        model = Event
+        fields = ("id", "type", "start_time", "end_time", "polyline")
