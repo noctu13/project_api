@@ -85,5 +85,149 @@
       "r": "1.0",
       "polyline": "2"
     }
+  },
+  {
+    "model": "api.event",
+    "pk": 2,
+    "fields": {
+      "type": "PFSS magnetic line",
+      "start_time": "2023-01-01T00:00:00+03:00",
+      "end_time": "2023-02-01T00:00:00+03:00"
+    }
+  },
+  {
+    "model": "api.polyline",
+    "pk": 3,
+    "fields": {
+      "event": "2",
+      "start_time": "2023-01-01T00:00:00+03:00",
+      "end_time": "2023-02-01T00:00:00+03:00"
+    }
+  },
+  {
+    "model": "api.point",
+    "pk": 7,
+    "fields": {
+      "theta": "-27.331",
+      "phi": "65.195",
+      "r": "1.0",
+      "polyline": "3"
+    }
+  },
+  {
+    "model": "api.point",
+    "pk": 8,
+    "fields": {
+      "theta": "-12.372",
+      "phi": "35.678",
+      "r": "1.0",
+      "polyline": "3"
+    }
+  },
+  {
+    "model": "api.point",
+    "pk": 9,
+    "fields": {
+      "theta": "0.643",
+      "phi": "-48.216",
+      "r": "1.0",
+      "polyline": "3"
+    }
+  },
+  {
+    "model": "api.event",
+    "pk": 3,
+    "fields": {
+      "type": "Coronal Hole",
+      "start_time": "2023-01-02T00:00:00+03:00",
+      "end_time": "2023-01-03T00:00:00+03:00"
+    }
+  },
+  {
+    "model": "api.polyline",
+    "pk": 4,
+    "fields": {
+      "event": "3",
+      "start_time": "2023-01-02T03:00:00+03:00",
+      "end_time": "2023-01-03T09:00:00+03:00"
+    }
+  },
+  {
+    "model": "api.point",
+    "pk": 10,
+    "fields": {
+      "theta": "1.956",
+      "phi": "45.415",
+      "r": "1.0",
+      "polyline": "4"
+    }
+  },
+  {
+    "model": "api.point",
+    "pk": 11,
+    "fields": {
+      "theta": "31.772",
+      "phi": "5.415",
+      "r": "1.0",
+      "polyline": "4"
+    }
+  },
+  {
+    "model": "api.point",
+    "pk": 12,
+    "fields": {
+      "theta": "0.646",
+      "phi": "3.228",
+      "r": "1.0",
+      "polyline": "4"
+    }
+  },
+  {
+    "model": "api.event",
+    "pk": 4,
+    "fields": {
+      "type": "PFSS magnetic line",
+      "start_time": "2023-02-01T00:00:00+03:00",
+      "end_time": "2023-03-01T00:00:00+03:00"
+    }
+  },
+  {
+    "model": "api.polyline",
+    "pk": 5,
+    "fields": {
+      "event": "4",
+      "start_time": "2023-02-01T00:00:00+03:00",
+      "end_time": "2023-03-01T00:00:00+03:00"
+    }
+  },
+  {
+    "model": "api.point",
+    "pk": 13,
+    "fields": {
+      "theta": "-27.331",
+      "phi": "65.195",
+      "r": "1.0",
+      "polyline": "5"
+    }
+  },
+  {
+    "model": "api.point",
+    "pk": 14,
+    "fields": {
+      "theta": "-12.372",
+      "phi": "35.678",
+      "r": "1.0",
+      "polyline": "5"
+    }
+  },
+  {
+    "model": "api.point",
+    "pk": 15,
+    "fields": {
+      "theta": "0.643",
+      "phi": "-48.216",
+      "r": "1.0",
+      "polyline": "5"
+    }
   }
 ]
