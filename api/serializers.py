@@ -61,6 +61,7 @@ class EventSerializer(serializers.ModelSerializer):
     start_time = CustomDateTimeField()
     end_time = CustomDateTimeField()
     polyline = PolylineSerializer(
+        source='into_query_day',
         many=True,
         read_only=True,
     )

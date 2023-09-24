@@ -1,9 +1,12 @@
-from datetime import date, datetime
+import pytz
+from datetime import datetime, timedelta
 from rest_framework import generics
 from django.http import HttpResponse
+from django.db.models import Prefetch
+from django.conf import settings
 
 import numpy as np
-from astropy.time import Time, TimeDelta
+from astropy.time import Time
 from sunpy.net import hek, attrs
 from sunpy.time import parse_time
 
@@ -19,19 +22,29 @@ class EventsView(generics.ListAPIView):
     
     def get_queryset(self):
         short_type = short_type_dict[self.kwargs['short_type']]
+        queryset = Event.objects.filter(type=short_type)
         year = self.kwargs.get('year')
         month = self.kwargs.get('month')
         day = self.kwargs.get('day')
         if year and month and day:
-            query_day = date(year, month, day)
-            return Event.objects.filter(
-                type=short_type, 
-                start_time__lte=query_day,
-                end_time__gt=query_day,
+            query_day = datetime(year, month, day, 0, 0, 0, tzinfo=pytz.timezone(settings.TIME_ZONE))
+            into_query_day = Polyline.objects.filter(
+                start_time__lte=query_day + timedelta(days=1),
+                end_time__gte=query_day,
             )
-        return Event.objects.filter(type=short_type)
+            queryset = queryset.filter(
+                start_time__lte=query_day + timedelta(days=1),
+                end_time__gte=query_day,
+            ).prefetch_related(
+                Prefetch(
+                    'polyline',
+                    queryset=into_query_day,
+                    to_attr='into_query_day'
+                )
+            )
+        return queryset # много элементов > 150k - ошибка
 
-#2 get запрос на обновление данных с HEK (повышенные привелегии)
+#2 требует повышенные привелегии/ нет контроля состояния
 def load_HEK_CH(request):
     result = None
     load_start_time = Time('2023-01-01T00:00:00', scale='utc', format='isot')
@@ -61,16 +74,12 @@ def load_HEK_CH(request):
             end_time=event_end_time.datetime,
         )
         polygon_string = ch["hgs_boundcc"][9:-2] # strip POLYGON(())
-        polygon_list = polygon_string.split(',') # point strings
-        polygon_list = [item.split(" ") for item in polygon_list] # split items to pairs
-        point_list = []
+        polygon_list = [item.split(" ") for item in polygon_string.split(',')]
         for point in polygon_list:
-            point_list.append(
-                Point.objects.create( # PML order by id
-                    theta=float(point[0]), 
-                    phi=float(point[1]),
-                    polyline=polyline,
-                )
+            Point.objects.create( # PML order by id
+                theta=float(point[0]), 
+                phi=float(point[1]),
+                polyline=polyline,
             )
     result = True
     return HttpResponse(result)
