@@ -21,7 +21,7 @@ class Polyline(models.Model):
 class Point(models.Model):
     theta = models.FloatField()
     phi = models.FloatField()
-    r = models.FloatField()
+    r = models.FloatField(default=1.0)
     polyline = models.ForeignKey(
         Polyline, 
         on_delete=models.CASCADE,

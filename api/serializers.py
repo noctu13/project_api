@@ -2,8 +2,9 @@ from rest_framework import ISO_8601
 from rest_framework import serializers
 from rest_framework.settings import api_settings
 
-
 from .models import Event, Polyline, Point
+from .common import *
+
 
 class CustomDateTimeField(serializers.DateTimeField):
 
@@ -23,7 +24,24 @@ class PointSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Point
-        fields = ("theta", "phi", "r")
+        exclude = ('id', 'polyline', )
+    
+    def to_internal_value(self, data):
+        lat = data.pop('lat', None)
+        lon = data.pop('lon', None)
+        if lat or lon:
+            data['phi'] = lat
+            data['theta'] = lon
+        return super().to_internal_value(data)
+    
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        event_type = instance.polyline.event.type
+        if event_type == short_type_dict['CH']:
+            data['lat'] = data.pop('phi')
+            data['lon'] = data.pop('theta')
+            data.pop('r')
+        return data
         
 
 class PolylineSerializer(serializers.ModelSerializer):
