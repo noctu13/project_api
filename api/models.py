@@ -3,8 +3,9 @@ from django.db import models
 
 class Event(models.Model):
     type = models.CharField(max_length=20)
-    start_time = models.DateTimeField()
-    end_time = models.DateTimeField()
+    start_time = models.DateTimeField(null=True)
+    end_time = models.DateTimeField(null=True)
+    spec_id = models.CharField(max_length=30, unique=True)
 
 
 class Polyline(models.Model):

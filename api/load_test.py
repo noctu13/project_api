@@ -1,41 +1,17 @@
-from datetime import date, datetime
-from rest_framework import generics
-from django.http import HttpResponse
-
 import numpy as np
-from astropy.time import Time, TimeDelta
+from astropy.time import Time
 from sunpy.net import hek, attrs
 from sunpy.time import parse_time
-
+from datetime import datetime
 
 from .models import Event, Polyline, Point
-from .serializers import EventSerializer, PolylineSerializer, PointSerializer
-from .permissions import IsAdminOrReadOnly
-from .common import *
+from .common import short_type_dict
 
 
-class EventsView(generics.ListAPIView):
-    serializer_class = EventSerializer
-    
-    def get_queryset(self):
-        short_type = short_type_dict[self.kwargs['short_type']]
-        year = self.kwargs.get('year')
-        month = self.kwargs.get('month')
-        day = self.kwargs.get('day')
-        if year and month and day:
-            query_day = date(year, month, day)
-            return Event.objects.filter(
-                type=short_type, 
-                start_time__lte=query_day,
-                end_time__gt=query_day,
-            )
-        return Event.objects.filter(type=short_type)
-
-#2 get запрос на обновление данных с HEK (повышенные привелегии)
-def load_HEK_CH(request):
-    result = None
+def load():
     load_start_time = Time('2023-01-01T00:00:00', scale='utc', format='isot')
-    load_end_time = Time(datetime.now())
+    load_end_time = Time('2023-01-01T00:00:00', scale='utc', format='isot')
+    #Time(datetime.now()) # timedelta UTC+3
     hek_client = hek.HEKClient()
     responses = hek_client.search(
         attrs.Time(load_start_time, load_end_time), 
@@ -52,13 +28,13 @@ def load_HEK_CH(request):
             spec_id=ch['frm_specificid'],
         )
         if not event.start_time:
-            event.start_time = event_start_time.datetime
-        event.end_time = event_end_time.datetime
+            event.start_time = event_start_time
+        event.end_time = event_end_time
         event.save()
         polyline = Polyline.objects.create(
-            event=event,
-            start_time=event_start_time.datetime,
-            end_time=event_end_time.datetime,
+            event=event.id,
+            start_time=event_start_time,
+            end_time=event_end_time,
         )
         polygon_string = ch["hgs_boundcc"][9:-2] # strip POLYGON(())
         polygon_list = polygon_string.split(',') # point strings
@@ -72,7 +48,4 @@ def load_HEK_CH(request):
                     polyline=polyline,
                 )
             )
-    result = True
-    return HttpResponse(result)
-
-#2.1 создание и обработка токенов
+load()
