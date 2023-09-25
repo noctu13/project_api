@@ -56,6 +56,13 @@ class PolylineSerializer(serializers.ModelSerializer):
         model = Polyline
         fields = ("id", "start_time", "end_time", "points")
 
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        event_type = instance.event.type
+        if event_type == short_type_dict['CH']:
+            data.pop('polarity', None) # нет полярности у магнитных линий
+        return data
+
 
 class EventSerializer(serializers.ModelSerializer):
     start_time = CustomDateTimeField()

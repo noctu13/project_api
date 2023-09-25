@@ -1,5 +1,7 @@
 __pycache__/
 migrations/
+media/
+api/load_test.py
 .env
 .vs
 .pg_service.conf

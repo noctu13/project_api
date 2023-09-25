@@ -5,7 +5,7 @@ class Event(models.Model):
     type = models.CharField(max_length=20)
     start_time = models.DateTimeField(null=True)
     end_time = models.DateTimeField(null=True)
-    spec_id = models.CharField(max_length=30, unique=True)
+    spec_id = models.CharField(max_length=36, null=True, unique=True)
 
 
 class Polyline(models.Model):
@@ -16,7 +16,7 @@ class Polyline(models.Model):
     )
     start_time = models.DateTimeField()
     end_time = models.DateTimeField()
-    
+    polarity = models.BooleanField(null=True)
 
 
 class Point(models.Model):
