@@ -20,11 +20,15 @@ class Polyline(models.Model):
 
 
 class Point(models.Model):
-    theta = models.FloatField()
     phi = models.FloatField()
-    r = models.FloatField(default=1.0)
+    theta = models.FloatField()
+    r = models.FloatField(null=True)
     polyline = models.ForeignKey(
         Polyline, 
         on_delete=models.CASCADE,
         related_name='points',
     )
+    
+    def __str__(self):
+        tail = f' {self.r}' if self.r else ''
+        return f'{self.phi} {self.theta}{tail}'

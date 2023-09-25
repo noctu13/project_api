@@ -3,7 +3,7 @@ import shutil
 import requests
 import urllib.request
 from pathlib import Path
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from rest_framework import generics
 from django.conf import settings
@@ -59,8 +59,12 @@ class EventsView(generics.ListAPIView):
         return queryset # много элементов > 150k - ошибка
 
 #2 требует повышенные привелегии/ нет контроля состояния
-def load_HEK_CH(request):
-    result = None
+def load_HEK_CH():
+    g_CH_load_status = False
+
+    def ast_utc(obj):
+        return obj.datetime.astimezone(timezone.utc)
+    
     load_start_time = Time('2023-01-01T00:00:00', scale='utc', format='isot')
     load_end_time = Time(datetime.now())
     hek_client = hek.HEKClient()
@@ -72,46 +76,46 @@ def load_HEK_CH(request):
     responses = sorted(responses, key=lambda x: x['event_starttime'])
     for index in range(len(responses)):
         ch = responses[index] # JSON dict
-        event_start_time = ch['event_starttime']
-        event_end_time = ch['event_endtime']
+        event_start_time = ast_utc(ch['event_starttime'])
+        event_end_time = ast_utc(ch['event_endtime'])
         event, created = Event.objects.get_or_create(
             type=short_type_dict['CH'],
             spec_id=ch['frm_specificid'],
         )
         if not event.start_time:
-            event.start_time = event_start_time.datetime
-        event.end_time = event_end_time.datetime
+            event.start_time = event_start_time
+        event.end_time = event_end_time
         event.save()
         polyline = Polyline.objects.create(
             event=event,
-            start_time=event_start_time.datetime,
-            end_time=event_end_time.datetime,
+            start_time=event_start_time,
+            end_time=event_end_time,
         )
         polygon_string = ch['hgs_boundcc'][9:-2] # strip POLYGON(())
         polygon_list = [item.split(' ') for item in polygon_string.split(',')]
         for point in polygon_list:
             Point.objects.create(
-                theta=float(point[0]), 
-                phi=float(point[1]),
+                phi=float(point[0]),
+                theta=float(point[1]), 
                 polyline=polyline,
             )
-    result = True
-    return HttpResponse(result)
+    g_CH_load_status = True
+    return HttpResponse(g_CH_load_status)
 
-#3 функция ввода магнитных линий
-def load_STOP_PFSS_lines(request):
-    BASE_DIR = Path(__file__).resolve().parent.parent
-    result = None
+
+def load_STOP_PFSS_lines():
+    g_PML_load_status = False
+
     def fits_url(cr):
         url = 'http://158.250.29.123:8000/web/Stop/Synoptic%20maps/'
-        return url + 'stop_' + str(cr) + '.fits'
+        return f'{url}stop_{cr}.fits'
     start_cr = int(carrington_rotation_number(date(2023,1,1)))
     end_cr = int(carrington_rotation_number(date.today()))
     end_cr_exists = requests.head(fits_url(end_cr)).status_code == 200
     end_cr += 1 if end_cr_exists else 0
     nrho, rss, r, divisor = 35, 2.5, 2.5 * const.R_sun, 16
     for cr_ind in range(start_cr, end_cr):
-        path = BASE_DIR / ('Media/' + 'stop_' + str(cr_ind) + '.fits')
+        path = settings.BASE_DIR / f'Media/stop_{cr_ind}.fits'
         if not path.exists():
             with urllib.request.urlopen(fits_url(cr_ind)) as response, open(
                 path, 'wb') as out_file:
@@ -151,7 +155,7 @@ def load_STOP_PFSS_lines(request):
             coords = field_line.coords
             coords.representation_type = 'spherical'
             coords.transform_to(HGS)
-            if len(coords)>1:
+            if len(coords) > 1:
                 polyline = Polyline.objects.create(
                     event=event,
                     start_time=car_data,
@@ -167,7 +171,7 @@ def load_STOP_PFSS_lines(request):
                         r=item.radius / const.R_sun,
                         polyline=polyline,
                     )
-    result = True
-    return HttpResponse(result)
+    g_PML_load_status = True
+    return HttpResponse(g_PML_load_status)
     
 #2.1 создание и обработка токенов
