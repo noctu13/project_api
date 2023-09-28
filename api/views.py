@@ -39,26 +39,31 @@ class EventsView(generics.ListAPIView):
         year = self.kwargs.get('year')
         month = self.kwargs.get('month')
         day = self.kwargs.get('day')
+        event_dict = {}
+        for key in short_type_dict.keys():
+             event_dict[key] = short_type == short_type_dict[key]
         if year and month and day:
             query_day = datetime(year, month, day, 0, 0, 0, 
                 tzinfo=pytz.timezone(settings.TIME_ZONE))
-            into_query_day = Polyline.objects.filter(
-                start_time__lte=query_day + timedelta(days=1),
-                end_time__gte=query_day,
-            )
-            queryset = queryset.filter(
-                start_time__lte=query_day + timedelta(days=1),
-                end_time__gte=query_day,
-            ).prefetch_related(
+            kwargs = {
+                'start_time__lte': query_day + timedelta(days=1),
+                'end_time__gt': query_day,
+            }
+            into_query_day = Polyline.objects.filter(**kwargs)
+            if event_dict['PML']:
+                noon = query_day + timedelta(hours=12)
+                kwargs['start_time__lte'] = noon
+                kwargs['end_time__gt'] = noon
+            queryset = queryset.filter(**kwargs).prefetch_related(
                 Prefetch(
                     'polyline',
                     queryset=into_query_day,
                     to_attr='into_query_day'
                 )
             )
-        return queryset # много элементов > 150k - ошибка
+        return queryset # пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ > 150k - пїЅпїЅпїЅпїЅпїЅпїЅ
 
-#2 требует повышенные привелегии/ нет контроля состояния
+#2 пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ/ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
 def load_HEK_CH():
     g_CH_load_status = False
 
@@ -174,4 +179,4 @@ def load_STOP_PFSS_lines():
     g_PML_load_status = True
     return HttpResponse(g_PML_load_status)
     
-#2.1 создание и обработка токенов
+#2.1 пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ
