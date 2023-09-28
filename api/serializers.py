@@ -60,3 +60,10 @@ class EventSerializer(serializers.ModelSerializer):
     class Meta:
         model = Event
         fields = ('id', 'type', 'start_time', 'end_time', 'polyline',)
+     
+    def to_representation(self, instance):
+        data = super().to_representation(instance)     
+        data['start_time'] = time_parser(instance.start_time)
+        data['end_time'] = time_parser(instance.start_time)
+        return data
+        
