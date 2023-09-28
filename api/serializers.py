@@ -6,6 +6,10 @@ from .models import Event, Polyline, Point
 from .common import *
 
 
+def time_parser(dt_obj):
+    return f'{dt_obj:%Y-%m-%d %H:%M}'
+
+
 class PointSerializer(serializers.ModelSerializer):
     
     class Meta:
@@ -22,7 +26,10 @@ class PolylineSerializer(serializers.ModelSerializer):
         fields = ('id', 'start_time', 'end_time','polarity',)
         
     def to_representation(self, instance):
-        data = super().to_representation(instance)
+        data = {}
+        data['id'] = f'{instance.pk}'
+        data['start_time'] = time_parser(instance.start_time)
+        data['end_time'] = time_parser(instance.start_time)
         event_dict = {}
         for key in short_type_dict.keys():
              event_dict[key] = instance.event.type == short_type_dict[key]
@@ -36,8 +43,8 @@ class PolylineSerializer(serializers.ModelSerializer):
             else: str(point)
             point_list.append(point_line)
         data['points'] = point_list
-        if event_dict['CH']:
-            data.pop('polarity')
+        if event_dict['PML']:
+            data['polarity'] = f'{instance.polarity}'
         return data
 
 
@@ -53,3 +60,9 @@ class EventSerializer(serializers.ModelSerializer):
     class Meta:
         model = Event
         fields = ('id', 'type', 'start_time', 'end_time', 'polyline',)
+    
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data['start_time'] = time_parser(instance.start_time)
+        data['end_time'] = time_parser(instance.start_time)
+        return data

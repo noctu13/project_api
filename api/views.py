@@ -1,3 +1,5 @@
+from dataclasses import field
+from logging import Filter
 import pytz
 import shutil
 import requests
@@ -6,6 +8,8 @@ from pathlib import Path
 from datetime import date, datetime, timedelta, timezone
 
 from rest_framework import generics
+from rest_framework.filters import SearchFilter, OrderingFilter
+from django_filters import rest_framework as filters
 from django.conf import settings
 from django.http import HttpResponse
 from django.db.models import Prefetch
@@ -31,32 +35,14 @@ from .permissions import IsAdminOrReadOnly
 
 
 class EventsView(generics.ListAPIView):
+    queryset = Event.objects.all()
     serializer_class = EventSerializer
+    filter_backends = [filters.DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_fields = ['type', 'start_time', 'end_time']
+    search_fields = ['spec_id']
+    ordering_fields = ['start_time', 'end_time']
+    ordering = ['start_time']
     
-    def get_queryset(self):
-        short_type = short_type_dict[self.kwargs['short_type']]
-        queryset = Event.objects.filter(type=short_type)
-        year = self.kwargs.get('year')
-        month = self.kwargs.get('month')
-        day = self.kwargs.get('day')
-        if year and month and day:
-            query_day = datetime(year, month, day, 0, 0, 0, 
-                tzinfo=pytz.timezone(settings.TIME_ZONE))
-            into_query_day = Polyline.objects.filter(
-                start_time__lte=query_day + timedelta(days=1),
-                end_time__gte=query_day,
-            )
-            queryset = queryset.filter(
-                start_time__lte=query_day + timedelta(days=1),
-                end_time__gte=query_day,
-            ).prefetch_related(
-                Prefetch(
-                    'polyline',
-                    queryset=into_query_day,
-                    to_attr='into_query_day'
-                )
-            )
-        return queryset # много элементов > 150k - ошибка
 
 #2 требует повышенные привелегии/ нет контроля состояния
 def load_HEK_CH():
