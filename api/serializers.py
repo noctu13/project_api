@@ -29,7 +29,7 @@ class PolylineSerializer(serializers.ModelSerializer):
         data = {}
         data['id'] = f'{instance.pk}'
         data['start_time'] = time_parser(instance.start_time)
-        data['end_time'] = time_parser(instance.start_time)
+        data['end_time'] = time_parser(instance.end_time)
         event_dict = {}
         for key in short_type_dict.keys():
              event_dict[key] = instance.event.type == short_type_dict[key]
@@ -64,6 +64,6 @@ class EventSerializer(serializers.ModelSerializer):
     def to_representation(self, instance):
         data = super().to_representation(instance)     
         data['start_time'] = time_parser(instance.start_time)
-        data['end_time'] = time_parser(instance.start_time)
+        data['end_time'] = time_parser(instance.end_time)
         return data
         
