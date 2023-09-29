@@ -28,7 +28,7 @@ SECRET_KEY = os.getenv("DG_SECRET")
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = False
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = os.getenv("DG_HOSTS").split()
 
 
 # Application definition

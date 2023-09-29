@@ -44,7 +44,7 @@ class EventsView(generics.ListAPIView):
              event_dict[key] = short_type == short_type_dict[key]
         if year and month and day:
             query_day = datetime(year, month, day, 0, 0, 0, 
-                tzinfo=pytz.timezone(settings.TIME_ZONE))
+                tzinfo=timezone.utc)
             kwargs = {
                 'start_time__lte': query_day + timedelta(days=1),
                 'end_time__gt': query_day,
@@ -135,8 +135,8 @@ def load_STOP_PFSS_lines():
         header['CTYPE1'] = 'CRLN-CEA'
         header['CTYPE2'] = 'CRLT-CEA'
         header['CRVAL1'] = 180
-        car_data = carrington_rotation_time(cr_ind).to_datetime(timezone=pytz.timezone(settings.TIME_ZONE))
-        next_car_data = carrington_rotation_time(cr_ind + 1).to_datetime(timezone=pytz.timezone(settings.TIME_ZONE))
+        car_data = carrington_rotation_time(cr_ind).to_datetime(timezone=timezone.utc)
+        next_car_data = carrington_rotation_time(cr_ind + 1).to_datetime(timezone=timezone.utc)
         stop_map = Map(data, header)
         stop_map = stop_map.resample([360, 180] * u.pix)
         pfss_in = utils.pfsspy.Input(stop_map, nrho, rss)
