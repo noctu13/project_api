@@ -8,7 +8,7 @@ from datetime import date, datetime, timedelta, timezone
 from rest_framework import generics
 from django.conf import settings
 from django.http import HttpResponse
-from django.db.models import Prefetch
+from django.db.models import Prefetch, Q
 
 import numpy as np
 import astropy.units as u
@@ -45,16 +45,14 @@ class EventsView(generics.ListAPIView):
         if year and month and day:
             query_day = datetime(year, month, day, 0, 0, 0, 
                 tzinfo=timezone.utc)
-            kwargs = {
-                'start_time__lte': query_day + timedelta(days=1),
-                'end_time__gt': query_day,
-            }
-            into_query_day = Polyline.objects.filter(**kwargs)
+            query1 = Q(start_time__lt=query_day + timedelta(days=1))
+            query2 = Q(end_time__gt=query_day)
+            into_query_day = Polyline.objects.filter(query1 & query2)
             if event_dict['PML']:
                 noon = query_day + timedelta(hours=12)
-                kwargs['start_time__lte'] = noon
-                kwargs['end_time__gt'] = noon
-            queryset = queryset.filter(**kwargs).prefetch_related(
+                query1 = Q(start_time__lte=noon)
+                query2 = Q(end_time__gt=noon)
+            queryset = queryset.filter(query1 & query2).prefetch_related(
                 Prefetch(
                     'polyline',
                     queryset=into_query_day,
