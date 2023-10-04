@@ -47,12 +47,14 @@ class EventsView(generics.ListAPIView):
                 tzinfo=timezone.utc)
             query1 = Q(start_time__lt=query_day + timedelta(days=1))
             query2 = Q(end_time__gt=query_day)
-            into_query_day = Polyline.objects.filter(query1 & query2)
+            into_query_day = Polyline.objects.filter(
+                query1 & query2).order_by('start_time')
             if event_dict['PML']:
                 noon = query_day + timedelta(hours=12)
                 query1 = Q(start_time__lte=noon)
                 query2 = Q(end_time__gt=noon)
-            queryset = queryset.filter(query1 & query2).prefetch_related(
+            queryset = queryset.filter(query1 & query2).order_by(
+                'start_time').prefetch_related(
                 Prefetch(
                     'polyline',
                     queryset=into_query_day,
@@ -60,6 +62,10 @@ class EventsView(generics.ListAPIView):
                 )
             )
         return queryset # ����� ��������� > 150k - ������
+
+def update_HEK_CH():
+    update_start_time = None
+    update_end_time = Time(datetime.now())
 
 #2 ������� ���������� ����������/ ��� �������� ���������
 def load_HEK_CH():
