@@ -82,9 +82,8 @@ def load_HEK_CH():
         attrs.hek.CH, 
         attrs.hek.FRM.Name == 'SPoCA',
     )
-    responses = sorted(responses, key=lambda x: x['event_starttime'])
-    for index in range(len(responses)):
-        ch = responses[index] # JSON dict
+    responses.sort(['event_starttime'])
+    for ch in responses:
         event_start_time = ast_utc(ch['event_starttime'])
         event_end_time = ast_utc(ch['event_endtime'])
         event, created = Event.objects.get_or_create(
@@ -103,9 +102,10 @@ def load_HEK_CH():
         polygon_string = ch['hgs_boundcc'][9:-2] # strip POLYGON(())
         polygon_list = [item.split(' ') for item in polygon_string.split(',')]
         for point in polygon_list:
+            lon, lat = point[0], point[1]
             Point.objects.create(
-                phi=float(point[0]),
-                theta=float(point[1]), 
+                phi = lon,
+                theta = lat, 
                 polyline=polyline,
             )
     g_CH_load_status = True
@@ -114,16 +114,26 @@ def load_HEK_CH():
 
 def load_STOP_PFSS_lines():
     g_PML_load_status = False
+    nrho, rss, r, divisor = 35, 2.5, 2.5 * const.R_sun, 16
 
     def fits_url(cr):
         url = 'http://158.250.29.123:8000/web/Stop/Synoptic%20maps/'
         return f'{url}stop_{cr}.fits'
+
+    def cr_exists(cr):
+        return requests.head(fits_url(cr)).status_code == 200
+    
+    def polarity_convector(string):
+        return None if string == '0' else int(string) > 0
+    
+    last_pml = Event.objects.filter(
+        type=short_type_dict['PML']).latest('start_time')
     start_cr = int(carrington_rotation_number(date(2023,1,1)))
+    if last_pml:
+        start_cr = int(carrington_rotation_number(last_pml.start_time)) + 1
     end_cr = int(carrington_rotation_number(date.today()))
-    end_cr_exists = requests.head(fits_url(end_cr)).status_code == 200
-    end_cr += 1 if end_cr_exists else 0
-    nrho, rss, r, divisor = 35, 2.5, 2.5 * const.R_sun, 16
-    for cr_ind in range(start_cr, end_cr):
+    while not cr_exists(end_cr): end_cr -= 1
+    for cr_ind in range(start_cr, end_cr + 1):
         path = settings.BASE_DIR / f'Media/stop_{cr_ind}.fits'
         if not path.exists():
             with urllib.request.urlopen(fits_url(cr_ind)) as response, open(
@@ -156,10 +166,7 @@ def load_STOP_PFSS_lines():
             type=short_type_dict['PML'],
             start_time = car_data,
             end_time = next_car_data,
-        )
-        def polarity_convector(string):
-            return None if string == '0' else int(string) > 0
-            
+        )   
         for field_line in field_lines:
             coords = field_line.coords
             coords.representation_type = 'spherical'
@@ -175,8 +182,8 @@ def load_STOP_PFSS_lines():
                     lat = float(str(item.lat * u.deg)[:-5])
                     lon = float(str(item.lon * u.deg)[:-5])
                     Point.objects.create( # PML order by id
-                        phi=lat,
-                        theta=lon,
+                        phi=lon,
+                        theta=lat,
                         r=item.radius / const.R_sun,
                         polyline=polyline,
                     )
