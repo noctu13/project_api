@@ -69,12 +69,13 @@ def ast_utc(obj):
 #2 требует повышенные привелегии/ нет контроля состояния
 def load_HEK_CH():
     g_CH_load_status = False
-    last_hole = Event.objects.filter(
-        type=short_type_dict['CH']).latest('start_time')
-    load_start_time = Time('2023-01-01T00:00:00', scale='utc', format='isot')
-    if last_hole:
+    try:
+        last_hole = Event.objects.filter(
+            type=short_type_dict['CH']).latest('start_time')
         load_start_time = last_hole.start_time.replace(
             hour=0, minute=0, second=0)
+    except Event.DoesNotExist:
+        load_start_time = Time('2023-01-01T00:00:00', scale='utc', format='isot')
     load_end_time = Time(datetime.now())
     hek_client = hek.HEKClient()
     responses = hek_client.search(
@@ -126,11 +127,12 @@ def load_STOP_PFSS_lines():
     def polarity_convector(string):
         return None if string == '0' else int(string) > 0
     
-    last_pml = Event.objects.filter(
-        type=short_type_dict['PML']).latest('start_time')
-    start_cr = int(carrington_rotation_number(date(2023,1,1)))
-    if last_pml:
+    try:
+        last_pml = Event.objects.filter(
+            type=short_type_dict['PML']).latest('start_time')
         start_cr = int(carrington_rotation_number(last_pml.start_time)) + 1
+    except Event.DoesNotExist:
+        start_cr = int(carrington_rotation_number(date(2023,1,1)))
     end_cr = int(carrington_rotation_number(date.today()))
     while not cr_exists(end_cr): end_cr -= 1
     for cr_ind in range(start_cr, end_cr + 1):
