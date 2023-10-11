@@ -61,20 +61,20 @@ class EventsView(generics.ListAPIView):
                     to_attr='into_query_day'
                 )
             )
-        return queryset # ����� ��������� > 150k - ������
+        return queryset # много элементов > 150k - ошибка
 
-def update_HEK_CH():
-    update_start_time = None
-    update_end_time = Time(datetime.now())
+def ast_utc(obj):
+    return obj.datetime.astimezone(timezone.utc)
 
-#2 ������� ���������� ����������/ ��� �������� ���������
+#2 требует повышенные привелегии/ нет контроля состояния
 def load_HEK_CH():
     g_CH_load_status = False
-
-    def ast_utc(obj):
-        return obj.datetime.astimezone(timezone.utc)
-    
+    last_hole = Event.objects.filter(
+        type=short_type_dict['CH']).latest('start_time')
     load_start_time = Time('2023-01-01T00:00:00', scale='utc', format='isot')
+    if last_hole:
+        load_start_time = last_hole.start_time.replace(
+            hour=0, minute=0, second=0)
     load_end_time = Time(datetime.now())
     hek_client = hek.HEKClient()
     responses = hek_client.search(
@@ -183,4 +183,4 @@ def load_STOP_PFSS_lines():
     g_PML_load_status = True
     return HttpResponse(g_PML_load_status)
     
-#2.1 �������� � ��������� �������
+#2.1 создание и обработка токенов
