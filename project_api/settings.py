@@ -34,6 +34,7 @@ ALLOWED_HOSTS = os.getenv("DG_HOSTS").split()
 # Application definition
 
 INSTALLED_APPS = [
+    'django_crontab',
     'api',
     'rest_framework',
     'django.contrib.admin',
@@ -136,3 +137,8 @@ REST_FRAMEWORK = {
         'rest_framework.renderers.JSONRenderer',
     )
 }
+
+CRONJOBS = [
+    ('0 0 * * *', 'api.views.load_HEK_CH'),
+    ('0 0 * * *', 'api.views.load_STOP_PFSS_lines'),
+]
