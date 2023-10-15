@@ -35,7 +35,7 @@ class EventsView(generics.ListAPIView):
     
     def get_queryset(self):
         short_type = short_type_dict[self.kwargs['short_type']]
-        queryset = Event.objects.filter(type=short_type)
+        events_query = Event.objects.filter(type=short_type)
         year = self.kwargs.get('year')
         month = self.kwargs.get('month')
         day = self.kwargs.get('day')
@@ -53,7 +53,7 @@ class EventsView(generics.ListAPIView):
                 noon = query_day + timedelta(hours=12)
                 query1 = Q(start_time__lte=noon)
                 query2 = Q(end_time__gt=noon)
-            queryset = queryset.filter(query1 & query2).order_by(
+            queryset = events_query.filter(query1 & query2).order_by(
                 'start_time').prefetch_related(
                 Prefetch(
                     'polyline',
@@ -61,6 +61,10 @@ class EventsView(generics.ListAPIView):
                     to_attr='into_query_day'
                 )
             )
+            if not queryset and event_dict['PML']:
+                queryset = events_query.latest('start_time')
+                queryset.into_query_day = queryset.polyline
+                queryset = [queryset]
         return queryset # много элементов > 150k - ошибка
 
 def ast_utc(obj):
