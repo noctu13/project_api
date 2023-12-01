@@ -1,6 +1,7 @@
 __pycache__/
 migrations/
 media/
+maps/
 api/load_test.py
 .env
 .vs

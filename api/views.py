@@ -140,7 +140,7 @@ def load_STOP_PFSS_lines():
     end_cr = int(carrington_rotation_number(date.today()))
     while not cr_exists(end_cr): end_cr -= 1
     for cr_ind in range(start_cr, end_cr + 1):
-        path = settings.BASE_DIR / f'media/stop_{cr_ind}.fits'
+        path = settings.BASE_DIR / f'maps/synoptic/photospheric/stop/{cr_ind}.fits'
         if not path.exists():
             with urllib.request.urlopen(fits_url(cr_ind)) as response, open(
                 path, 'wb') as out_file:
