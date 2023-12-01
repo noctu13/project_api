@@ -11,10 +11,13 @@ from django.http import HttpResponse
 from django.db.models import Prefetch, Q
 
 import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.colors as clr
 import astropy.units as u
 import astropy.constants as const
 from astropy.io import fits
 from astropy.coordinates import SkyCoord
+from astropy.visualization import HistEqStretch, ImageNormalize
 from astropy.time import Time
 from sunpy.map import Map
 from sunpy.net import hek, attrs
@@ -112,7 +115,6 @@ def load_HEK_CH():
 
 def load_STOP_PFSS_lines():
     g_PML_load_status = False
-    nrho, rss, r, divisor = 35, 2.5, 2.5 * const.R_sun, 16
 
     def fits_url(cr):
         url = 'http://158.250.29.123:8000/web/Stop/Synoptic%20maps/'
@@ -141,19 +143,44 @@ def load_STOP_PFSS_lines():
         with fits.open(path) as hdul:
             data = hdul[0].data
             data = np.flip(data, 0)
+	    data_ratio = data.shape[0]/data.shape[1]
             header = hdul[0].header
-        header['CUNIT1'] = 'deg'
-        header['CUNIT2'] = 'deg'
-        header['CDELT2'] = 1 / np.pi
-        header['CTYPE1'] = 'CRLN-CEA'
-        header['CTYPE2'] = 'CRLT-CEA'
-        header['CRVAL1'] = 180
+            header['CUNIT1'] = 'deg'
+            header['CUNIT2'] = 'deg'
+            header['CDELT1'] = 1 / 2
+            header['CDELT2'] = 1 / np.pi
+            header['CTYPE1'] = 'CRLN-CEA'
+            header['CTYPE2'] = 'CRLT-CEA'
+            header['CRVAL1'] = 180
+            stop_map = Map(data, header)
         car_data = carrington_rotation_time(cr_ind).to_datetime(timezone=timezone.utc)
         next_car_data = carrington_rotation_time(cr_ind + 1).to_datetime(timezone=timezone.utc)
-        stop_map = Map(data, header)
-        stop_map = stop_map.resample([360, 180] * u.pix)
+
+        norm = ImageNormalize(stretch=HistEqStretch(data))
+        fig = plt.figure()
+        ax = fig.add_subplot(projection=stop_map)
+        stop_map.plot(cmap='bwr', norm=norm, axes=ax)
+        norm = clr.SymLogNorm(linthresh=1, vmin=stop_map.min(), vmax=stop_map.max())
+        fig.colorbar(plt.cm.ScalarMappable(norm=norm, cmap='bwr'),
+            ax=ax, fraction=0.047*data_ratio)
+        plt.title(f'Photospheric magnetogram, CR {cr_ind}')
+	path = settings.BASE_DIR / 'media/synoptic/photospheric/stop/'
+        plt.savefig(path / f'PH_{cr_ind}.png', bbox_inches='tight')
+
+        nrho, rss, r, divisor = 35, 2.5, 2.5 * const.R_sun, 16
         pfss_in = utils.pfsspy.Input(stop_map, nrho, rss)
-        pfss_out = utils.pfsspy.pfss(pfss_in)
+	pfss_out = utils.pfsspy.pfss(pfss_in)
+
+	ss_br = pfss_out.source_surface_br
+	fig = plt.figure()
+	ax = plt.subplot(projection=ss_br)
+	ss_br.plot(cmap='bwr')
+	for item in pfss_out.source_surface_pils:
+	    ax.plot_coord(item, 'k')
+	plt.colorbar(fraction=0.047*data_ratio)
+	ax.set_title(f'Source surface magnetogram, CR {cr_ind}')
+	plt.savefig(path / f'SS_{cr_ind}.png', bbox_inches='tight')
+
         tracer = tracing.FortranTracer()
         lat = np.linspace(-np.pi / 2, np.pi / 2, divisor, endpoint=False)
         lon = np.linspace(0, 2 * np.pi, divisor, endpoint=False)
@@ -165,7 +192,7 @@ def load_STOP_PFSS_lines():
             type=short_type_dict['PML'],
             start_time = car_data,
             end_time = next_car_data,
-        )   
+        )
         for field_line in field_lines:
             coords = field_line.coords
             coords.representation_type = 'spherical'
