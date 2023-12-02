@@ -35,7 +35,7 @@ from .permissions import IsAdminOrReadOnly
 
 class EventsView(generics.ListAPIView):
     serializer_class = EventSerializer
-    
+
     def get_queryset(self):
         short_type = short_type_dict[self.kwargs['short_type']]
         events_query = Event.objects.filter(type=short_type)
@@ -43,7 +43,7 @@ class EventsView(generics.ListAPIView):
         month = self.kwargs.get('month')
         day = self.kwargs.get('day')
         if year and month and day:
-            query_day = datetime(year, month, day, 0, 0, 0, 
+            query_day = datetime(year, month, day, 0, 0, 0,
                 tzinfo=timezone.utc)
             query1 = Q(start_time__lte=query_day + timedelta(days=1))
             query2 = Q(end_time__gt=query_day)
@@ -106,7 +106,7 @@ def load_HEK_CH():
             lon, lat = float(point[0]), float(point[1])
             Point.objects.create(
                 phi = lon,
-                theta = lat, 
+                theta = lat,
                 polyline=polyline,
             )
     g_CH_load_status = True
@@ -122,10 +122,10 @@ def load_STOP_PFSS_lines():
 
     def cr_exists(cr):
         return requests.head(fits_url(cr)).status_code == 200
-    
+
     def polarity_convector(string):
         return None if string == '0' else int(string) > 0
-    
+
     try:
         last_pml = Event.objects.filter(
             type=short_type_dict['PML']).latest('start_time')
@@ -135,6 +135,8 @@ def load_STOP_PFSS_lines():
     end_cr = int(carrington_rotation_number(date.today()))
     while not cr_exists(end_cr): end_cr -= 1
     for cr_ind in range(start_cr, end_cr + 1):
+        car_data = carrington_rotation_time(cr_ind).to_datetime(timezone=timezone.utc)
+        next_car_data = carrington_rotation_time(cr_ind + 1).to_datetime(timezone=timezone.utc)
         path = settings.BASE_DIR / f'maps/synoptic/photospheric/stop/{cr_ind}.fits'
         if not path.exists():
             with urllib.request.urlopen(fits_url(cr_ind)) as response, open(
@@ -148,13 +150,11 @@ def load_STOP_PFSS_lines():
             header['CUNIT1'] = 'deg'
             header['CUNIT2'] = 'deg'
             header['CDELT1'] = 1 / 2
-            header['CDELT2'] = 1 / np.pi
-            header['CTYPE1'] = 'CRLN-CEA'
-            header['CTYPE2'] = 'CRLT-CEA'
+            header['CDELT2'] = 1 / 2
+            header['CTYPE1'] = 'CRLN-CAR'
+            header['CTYPE2'] = 'CRLT-CAR'
             header['CRVAL1'] = 180
             stop_map = Map(data, header)
-        car_data = carrington_rotation_time(cr_ind).to_datetime(timezone=timezone.utc)
-        next_car_data = carrington_rotation_time(cr_ind + 1).to_datetime(timezone=timezone.utc)
 
         norm = ImageNormalize(stretch=HistEqStretch(data))
         fig = plt.figure()
@@ -168,6 +168,7 @@ def load_STOP_PFSS_lines():
         plt.savefig(path / f'PH_{cr_ind}.png', bbox_inches='tight')
 
         nrho, rss, r, divisor = 35, 2.5, 2.5 * const.R_sun, 16
+	stop_map = utils.car_to_cea(stop_map)
         pfss_in = utils.pfsspy.Input(stop_map, nrho, rss)
 	pfss_out = utils.pfsspy.pfss(pfss_in)
 
@@ -183,7 +184,7 @@ def load_STOP_PFSS_lines():
 
         tracer = tracing.FortranTracer()
         lat = np.linspace(-np.pi / 2, np.pi / 2, divisor, endpoint=False)
-        lon = np.linspace(0, 2 * np.pi, divisor, endpoint=False)
+        lon = np.linspace(0, 2 * np.pi, 2 * divisor, endpoint=False)
         lat, lon = np.meshgrid(lat, lon, indexing='ij')
         lat, lon = lat.ravel() * u.rad, lon.ravel() * u.rad
         seeds = SkyCoord(lon, lat, r, frame=pfss_out.coordinate_frame)
@@ -215,5 +216,5 @@ def load_STOP_PFSS_lines():
                     )
     g_PML_load_status = True
     return HttpResponse(g_PML_load_status)
-    
+
 #2.1 создание и обработка токенов
