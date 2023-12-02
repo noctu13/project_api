@@ -146,7 +146,7 @@ def load_STOP_PFSS_lines():
         with fits.open(path) as hdul:
             data = hdul[0].data
             data = np.flip(data, 0)
-	    data_ratio = data.shape[0]/data.shape[1]
+            data_ratio = data.shape[0]/data.shape[1]
             header = hdul[0].header
             header['CUNIT1'] = 'deg'
             header['CUNIT2'] = 'deg'
@@ -165,25 +165,25 @@ def load_STOP_PFSS_lines():
         fig.colorbar(plt.cm.ScalarMappable(norm=norm, cmap='bwr'),
             ax=ax, fraction=0.047*data_ratio)
         plt.title(f'Photospheric magnetogram, CR {cr_ind}')
-	path = settings.BASE_DIR / 'media/synoptic/'
-	ph_path = path / 'photospheric/stop/'
+        path = settings.BASE_DIR / 'media/synoptic/'
+        ph_path = path / 'photospheric/stop/'
         plt.savefig(ph_path / f'PH_{cr_ind}.png', bbox_inches='tight')
 
         nrho, rss, r, divisor = 35, 2.5, 2.5 * const.R_sun, 16
-	stop_map = utils.car_to_cea(stop_map)
+        stop_map = utils.car_to_cea(stop_map)
         pfss_in = utils.pfsspy.Input(stop_map, nrho, rss)
-	pfss_out = utils.pfsspy.pfss(pfss_in)
+        pfss_out = utils.pfsspy.pfss(pfss_in)
 
-	ss_br = pfss_out.source_surface_br
-	fig = plt.figure()
-	ax = plt.subplot(projection=ss_br)
-	ss_br.plot(cmap='bwr')
-	for item in pfss_out.source_surface_pils:
-	    ax.plot_coord(item, 'k')
-	plt.colorbar(fraction=0.047*data_ratio)
-	ax.set_title(f'Source surface magnetogram, CR {cr_ind}')
-	ph_path = path / 'source_surface/stop/'
-	plt.savefig(path / f'SS_{cr_ind}.png', bbox_inches='tight')
+        ss_br = pfss_out.source_surface_br
+        fig = plt.figure()
+        ax = plt.subplot(projection=ss_br)
+        ss_br.plot(cmap='bwr')
+        for item in pfss_out.source_surface_pils:
+            ax.plot_coord(item, 'k')
+        plt.colorbar(fraction=0.047*data_ratio)
+        ax.set_title(f'Source surface magnetogram, CR {cr_ind}')
+        ss_path = path / 'source_surface/stop/'
+        plt.savefig(ss_path / f'SS_{cr_ind}.png', bbox_inches='tight')
 
         tracer = tracing.FortranTracer()
         lat = np.linspace(-np.pi / 2, np.pi / 2, divisor, endpoint=False)
@@ -224,8 +224,8 @@ def load_SW_maps():
     path = settings.BASE_DIR / 'maps/synoptic/solar_wind/stop/'
     media_path = settings.BASE_DIR / 'media/synoptic/solar_wind/stop/'
     for name in next(os.walk(path)[2]):
-        if not media_path / f'{name}.png'.exists():
-            with fits.open(f'{fname}.fits') as hdul:
+        if not (media_path / f'{name}.png').exists():
+            with fits.open(path / f'{fname}.fits') as hdul:
        	        data = hdul[0].data
                 header = hdul[0].header
                 header['CUNIT1'] = 'deg'
