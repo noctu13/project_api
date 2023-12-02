@@ -224,9 +224,10 @@ def load_SW_maps():
     g_SW_load_status = False
     path = settings.BASE_DIR / 'maps/synoptic/solar_wind/stop/'
     media_path = settings.BASE_DIR / 'media/synoptic/solar_wind/stop/'
-    for name in next(os.walk(path)[2]):
-        if not (media_path / f'{name}.png').exists():
-            with fits.open(path / f'{fname}.fits') as hdul:
+    for name in path.iterdir():
+        notype_name = str(name).split('/')[-1].split('.')[0]
+        if not (media_path / f'{notype_name}.png').exists():
+            with fits.open(path / f'{name}') as hdul:
        	        data = hdul[0].data
                 header = hdul[0].header
                 header['CUNIT1'] = 'deg'
@@ -236,7 +237,7 @@ def load_SW_maps():
                 header['CTYPE1'] = 'CRLN-CAR'
                 header['CTYPE2'] = 'CRLT-CAR'
                 header['CRVAL1'] = 180
-                stop_map = sunpy.map.Map(data, header)
+                stop_map = Map(data, header)
                 cr_ind = header['CAR_ROT']
                 car_date = carrington_rotation_time(cr_ind).to_datetime()
                 data_ratio = data.shape[0]/data.shape[1]
@@ -244,10 +245,10 @@ def load_SW_maps():
             fig = plt.figure()
             ax = fig.add_subplot(projection=stop_map)
             stop_map.plot(cmap='RdBu_r', norm=norm, axes=ax)
-            fig.colorbar(plt.cm.ScalarMappable(cmap='RdBu_r', norm=norm), 
+            fig.colorbar(plt.cm.ScalarMappable(cmap='RdBu_r', norm=norm),
                 ax=ax, fraction=0.047*data_ratio)
             plt.title(f'Solar wind, CR {cr_ind}')
-            plt.savefig(media_path / f'SW_{fname}.png', bbox_inches='tight')
+            plt.savefig(media_path / f'{notype_name}.png', bbox_inches='tight')
     g_SW_load_status = True
     return HttpResponse(g_SW_load_status)
 
