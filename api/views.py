@@ -221,6 +221,7 @@ def load_STOP_PFSS_lines():
     return HttpResponse(g_PML_load_status)
 
 def load_SW_maps():
+    g_SW_load_status = False
     path = settings.BASE_DIR / 'maps/synoptic/solar_wind/stop/'
     media_path = settings.BASE_DIR / 'media/synoptic/solar_wind/stop/'
     for name in next(os.walk(path)[2]):
@@ -247,4 +248,7 @@ def load_SW_maps():
                 ax=ax, fraction=0.047*data_ratio)
             plt.title(f'Solar wind, CR {cr_ind}')
             plt.savefig(media_path / f'SW_{fname}.png', bbox_inches='tight')
+    g_SW_load_status = True
+    return HttpResponse(g_SW_load_status)
+
 #2.1 создание и обработка токенов
