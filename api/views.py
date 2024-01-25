@@ -14,6 +14,8 @@ from django.db.models import Prefetch, Q
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.colors as clr
+from skimage.feature import peak_local_max
+
 import astropy.units as u
 import astropy.constants as const
 from astropy.io import fits
@@ -80,8 +82,8 @@ def load_HEK_CH():
     load_end_time = Time(datetime.now())
     hek_client = hek.HEKClient()
     responses = hek_client.search(
-        attrs.Time(load_start_time, load_end_time), 
-        attrs.hek.CH, 
+        attrs.Time(load_start_time, load_end_time),
+        attrs.hek.CH,
         attrs.hek.FRM.Name == 'SPoCA',
     )
     responses.sort(['event_starttime'])
@@ -241,12 +243,33 @@ def load_SW_maps():
                 cr_ind = header['CAR_ROT']
                 car_date = carrington_rotation_time(cr_ind).to_datetime()
                 data_ratio = data.shape[0]/data.shape[1]
+            n = 5
+            exclude = False #exclude one max element
+            if exclude:
+                sec_max = np.partition(data.flatten(), -2)[-2]
+                peaks = peak_local_max(data, min_distance=4,
+                    threshold_abs=sec_max*0.8, num_peaks=n+1, exclude_border=False)
+                peaks = peaks[1:]
+            else:
+                peaks = peak_local_max(data, min_distance=4,
+                    threshold_rel=0.8, num_peaks=n, exclude_border=False)
+            coords = SkyCoord(2.5 * peaks[:,1] * u.deg,
+                (2.5 * peaks[:,0] - 90) * u.deg, frame=stop_map.coordinate_frame)
+
             norm = clr.Normalize(vmin=250, vmax=750)
             fig = plt.figure()
             ax = fig.add_subplot(projection=stop_map)
             stop_map.plot(cmap='RdBu_r', norm=norm, axes=ax)
             fig.colorbar(plt.cm.ScalarMappable(cmap='RdBu_r', norm=norm),
                 ax=ax, fraction=0.047*data_ratio)
+
+            ax.plot_coord(coords, 'o', color='k', fillstyle='none')
+            for i in range(len(peaks)):
+                x, y = peaks[:,1][i], peaks[:,0][i]
+                mx = x if x <= 136 else x - 8
+                my = y if y <= 62 else y - 4
+                ax.text(mx, my, f'{data[y][x]:.0f}', fontsize=9)
+
             plt.title(f'Solar wind, CR {cr_ind}')
             plt.savefig(media_path / f'{notype_name}.png', bbox_inches='tight')
     g_SW_load_status = True
