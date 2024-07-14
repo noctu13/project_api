@@ -37,13 +37,13 @@ class PolylineSerializer(serializers.ModelSerializer):
         for point in instance.points.all():
             if event_dict['CH']:
                 point_line = f'{point.phi:.1f} {point.theta:.1f}'
-            elif event_dict['PML']:
+            elif event_dict['PML'] or event_dict['dPML']:
                 point_line = f'{point.phi:.3f}'\
                     f' {point.theta:.3f} {point.r:.3f}'
             else: str(point)
             point_list.append(point_line)
         data['points'] = point_list
-        if event_dict['PML']:
+        if event_dict['PML'] or event_dict['dPML']:
             data['polarity'] = f'{instance.polarity}'
         return data
 
