@@ -1,34 +1,96 @@
 from django.db import models
 
-
-class Event(models.Model):
-    type = models.CharField(max_length=20)
-    start_time = models.DateTimeField(null=True)
-    end_time = models.DateTimeField(null=True)
-    spec_id = models.CharField(max_length=36, null=True, unique=True)
+from .common import *
 
 
-class Polyline(models.Model):
-    event = models.ForeignKey(
-        Event, 
-        on_delete=models.CASCADE,
-        related_name='polyline',
-    )
+class HEKCoronalHole(models.Model):
+    spec_id = models.CharField(max_length=24)
+    sol = models.CharField(max_length=34)
     start_time = models.DateTimeField()
     end_time = models.DateTimeField()
+
+
+class HEKCoronalHoleContourPoint(models.Model):
+    lon = models.FloatField()
+    lat = models.FloatField()
+    ch = models.ForeignKey(
+        HEKCoronalHole, 
+        on_delete=models.CASCADE,
+        related_name='contour',
+    )
+
+    def __str__(self):
+        return f'{self.lon} {self.lat}'
+
+
+class CoronalHole(models.Model):
+    start_time = models.DateTimeField()
+    type = models.CharField(max_length=3, choices=ch_dict.items())
+    location = models.CharField(max_length=14, null=True)
+    sol = models.CharField(max_length=34, null=True)
+    area = models.FloatField(null=True)
+    mag_flux = models.FloatField(null=True)
+    avg_flux = models.FloatField(null=True)
+    max_flux = models.FloatField(null=True)
+
+
+class CoronalHolePoint(models.Model):
+    lon = models.FloatField()
+    lat = models.FloatField()
+    Br = models.FloatField()
+    ch = models.ForeignKey(
+        CoronalHole,
+        on_delete=models.CASCADE,
+        related_name='points',
+    )
+
+    def __str__(self):
+        return f'{self.lon} {self.lat} {self.B}'
+
+
+class CoronalHoleContour(models.Model):
+    ch = models.ForeignKey(
+        CoronalHole,
+        on_delete=models.CASCADE,
+        related_name='contour',
+    )
+
+class CoronalHoleContourPoint(models.Model):
+    lon = models.FloatField()
+    lat = models.FloatField()
+    contour = models.ForeignKey(
+        CoronalHoleContour,
+        on_delete=models.CASCADE,
+        related_name='points',
+    )
+
+    def __str__(self):
+        return f'{self.lon} {self.lat}'
+
+
+class MagneticLineSet(models.Model):
+    start_time = models.DateTimeField()
+    type = models.CharField(max_length=4, choices=ml_dict.items())
+
+
+class MagneticLine(models.Model):
     polarity = models.BooleanField(null=True)
+    lineset = models.ForeignKey(
+        MagneticLineSet,
+        on_delete=models.CASCADE,
+        related_name='lines',
+    )
 
 
-class Point(models.Model):
-    phi = models.FloatField()
-    theta = models.FloatField()
-    r = models.FloatField(null=True)
-    polyline = models.ForeignKey(
-        Polyline, 
+class MagneticLinePoint(models.Model):
+    lon = models.FloatField()
+    lat = models.FloatField()
+    r = models.FloatField()
+    line = models.ForeignKey(
+        MagneticLine,
         on_delete=models.CASCADE,
         related_name='points',
     )
     
     def __str__(self):
-        tail = f' {self.r}' if self.r else ''
-        return f'{self.phi} {self.theta}{tail}'
+        return f'{self.lon} {self.lat} {self.r}'

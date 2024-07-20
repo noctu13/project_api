@@ -1,69 +1,77 @@
-from rest_framework import ISO_8601
 from rest_framework import serializers
 from rest_framework.settings import api_settings
 
-from .models import Event, Polyline, Point
+from .models import (HEKCoronalHole, HEKCoronalHoleContourPoint,
+    CoronalHole, CoronalHoleContour, CoronalHoleContourPoint, CoronalHolePoint,
+    MagneticLineSet, MagneticLine, MagneticLinePoint)
 from .common import *
 
 
-def time_parser(dt_obj):
-    return f'{dt_obj:%Y-%m-%d %H:%M}'
+class HEKCoronalHoleContourPointSerializer(serializers.ModelSerializer):
 
+    class Meta:
+        model = HEKCoronalHoleContourPoint
+        fields = '__all__'
 
-class PointSerializer(serializers.ModelSerializer):
+class HEKCoronalHoleSerializer(serializers.ModelSerializer):
+    contour = HEKCoronalHoleContourPointSerializer(many=True)
     
     class Meta:
-        model = Point
-        exclude = ('id', 'polyline',)
-
-
-class PolylineSerializer(serializers.ModelSerializer):
-    start_time = serializers.DateTimeField()
-    end_time = serializers.DateTimeField()
+        model = HEKCoronalHole
+        fields = '__all__'
     
-    class Meta:
-        model = Polyline
-        fields = ('id', 'start_time', 'end_time','polarity',)
-        
     def to_representation(self, instance):
-        data = {}
-        data['id'] = f'{instance.pk}'
-        data['start_time'] = time_parser(instance.start_time)
-        data['end_time'] = time_parser(instance.end_time)
-        event_dict = {}
-        for key in short_type_dict.keys():
-             event_dict[key] = instance.event.type == short_type_dict[key]
-        point_list = []
-        for point in instance.points.all():
-            if event_dict['CH']:
-                point_line = f'{point.phi:.1f} {point.theta:.1f}'
-            elif event_dict['PML'] or event_dict['dPML']:
-                point_line = f'{point.phi:.3f}'\
-                    f' {point.theta:.3f} {point.r:.3f}'
-            else: str(point)
-            point_list.append(point_line)
+        data = super().to_representation(instance)
+        point_list = [str(point) for point in instance.contour.all()]
+        data['contour'] = point_list
+        return data
+
+class CoronalHoleContourPointSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = CoronalHoleContourPoint
+        fields = '__all__'
+
+class CoronalHoleContourSerializer(serializers.ModelSerializer):
+    points = CoronalHoleContourPointSerializer(many=True)
+
+    class Meta:
+        model = CoronalHoleContour
+        fields = '__all__'
+    
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        point_list = [str(point) for point in instance.points.all()]
         data['points'] = point_list
-        if event_dict['PML'] or event_dict['dPML']:
-            data['polarity'] = f'{instance.polarity}'
         return data
 
-
-class EventSerializer(serializers.ModelSerializer):
-    start_time = serializers.DateTimeField()
-    end_time = serializers.DateTimeField()
-    polyline = PolylineSerializer(
-        source='into_query_day',
-        many=True,
-        read_only=True,
-    )
+class CoronalHoleSerializer(serializers.ModelSerializer):
+    contour = CoronalHoleContourSerializer(many=True)
     
     class Meta:
-        model = Event
-        fields = ('id', 'type', 'start_time', 'end_time', 'polyline',)
-     
-    def to_representation(self, instance):
-        data = super().to_representation(instance)     
-        data['start_time'] = time_parser(instance.start_time)
-        data['end_time'] = time_parser(instance.end_time)
-        return data
-        
+        model = CoronalHole
+        fields = '__all__'
+
+class CoronalHolePointSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = CoronalHolePoint
+        fields = '__all__'
+
+class MagneticLineSetSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = MagneticLineSet
+        fields = '__all__'
+
+class MagneticLineSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = MagneticLine
+        fields = '__all__'
+
+class MagneticLinePointSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = MagneticLinePoint
+        fields = '__all__'
