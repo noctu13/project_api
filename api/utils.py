@@ -1,9 +1,13 @@
-import requests
+import random
 import shutil
-from datetime import date, datetime, timedelta, timezone
+import requests
+from datetime import date, datetime, time, timedelta, timezone
 
 import numpy as np
-import matplotlib.pyplot as plt
+from scipy.spatial.distance import pdist, squareform
+
+import matplotlib as mpl
+from matplotlib.figure import Figure
 import matplotlib.colors as cls
 
 from skimage import measure
@@ -24,30 +28,33 @@ from sunpy.net import hek, attrs
 from sunpy.coordinates.sun import (
     carrington_rotation_number, carrington_rotation_time)
 from sunpy.map import Map
-from sunpy.coordinates.frames import HeliographicStonyhurst as HGS
 
 from pfsspy import tracing, utils
+from pfsspy.utils import is_full_sun_synoptic_map
 
 from django.http import HttpResponse
 from django.conf import settings
 
 from .common import *
-from .models import (HEKCoronalHole, HEKCoronalHoleContourPoint,
-    CoronalHole, CoronalHoleContour, CoronalHoleContourPoint, CoronalHolePoint, 
+from .models import (CoronalHole, CoronalHolePoint,
+    CoronalHoleContour, CoronalHoleContourPoint,
     MagneticLineSet, MagneticLine, MagneticLinePoint)
 
 
-def load_SPOCA_CH_from_HEK():
-    g_CH_load_status = False
+test_date = date(2024, 8, 1)
+zero_time = time(0, 0, 0, tzinfo=timezone.utc)
+
+def load_HEK_CH():
 
     def ast_utc(obj):
         return obj.datetime.astimezone(timezone.utc)
 
     try:
-        last_hole = HEKCoronalHole.objects.latest('start_time')
+        last_hole = CoronalHole.objects.filter(
+            s_type='HCH').latest('start_time')
         load_start_time = last_hole.start_time + timedelta(seconds=1)
-    except HEKCoronalHole.DoesNotExist:
-        load_start_time = Time('2024-01-01T00:00:00', scale='utc', format='isot')
+    except CoronalHole.DoesNotExist:
+        load_start_time = Time(datetime.combine(test_date, zero_time))
     load_end_time = Time(datetime.now())
     hek_client = hek.HEKClient()
     responses = hek_client.search(
@@ -56,58 +63,58 @@ def load_SPOCA_CH_from_HEK():
         attrs.hek.FRM.Name == 'SPoCA',
     )
     responses.sort(['event_starttime'])
-    for ch in responses:
-        event = HEKCoronalHole.objects.create(
-            spec_id=ch['frm_specificid'],
-            sol=ch['solar_object_locator'],
-            start_time=ast_utc(ch['event_starttime']),
-            end_time=ast_utc(ch['event_endtime']),
-        )
-        polygon_string = ch['hgc_boundcc'][9:-2]
+    for event in responses:
+        lon, lat = map(float, event['hgc_coord'][6:-1].split())
+        ch = CoronalHole.objects.create(
+            sol=event['solar_object_locator'],
+            start_time=ast_utc(event['event_starttime']),
+            end_time=ast_utc(event['event_endtime']),
+            lon=lon, lat=lat, s_type='HCH')
+        polygon_string = event['hgc_boundcc'][9:-2]
         polygon_list = [item.split(' ') for item in polygon_string.split(',')]
+        contour = CoronalHoleContour.objects.create(ch=ch)
+        chc_pts_batch = []
         for point in polygon_list:
             lon, lat = float(point[0]), float(point[1])
-            HEKCoronalHoleContourPoint.objects.create(
-                lon=lon,
-                lat=lat,
-                ch=event,
-            )
-    g_CH_load_status = True
-    return HttpResponse(g_CH_load_status)
+            chc_point = CoronalHoleContourPoint(
+                lon=lon, lat=lat, contour=contour)
+            chc_pts_batch.append(chc_point)
+        CoronalHoleContourPoint.objects.bulk_create(chc_pts_batch)
+    return HttpResponse(True)
 
 
-def load_STOP_maps():
-    g_SML_load_status = False
+def load_STOP():
+    session = requests.Session()
 
     def fits_url(cr):
         url = 'http://158.250.29.123:8000/web/Stop/Synoptic%20maps/'
         return f'{url}stop_{cr}.fits'
     
     def fits_exists(cr):
-        return requests.head(fits_url(cr)).status_code == 200
+        return session.head(fits_url(cr)).status_code == 200
 
     try:
         last_pml = MagneticLineSet.objects.filter(
-            type='SML').latest('start_time')
+            s_type='SML').latest('start_time')
         start_cr = int(carrington_rotation_number(last_pml.start_time)) + 1
     except MagneticLineSet.DoesNotExist:
-        start_cr = int(carrington_rotation_number(date(2024,7,1))) - 1 # test date
+        start_cr = int(carrington_rotation_number(test_date)) - 1
     end_cr = int(carrington_rotation_number(date.today()))
+    ph_path = settings.BASE_DIR / f'maps/synoptic/photospheric/stop'
+    ph_path.mkdir(parents=True, exist_ok=True)
     while not fits_exists(end_cr): end_cr -= 1
     for cr_ind in range(start_cr, end_cr + 1):
-        path = settings.BASE_DIR / f'maps/synoptic/photospheric/stop/{cr_ind}.fits' # add carrington folder?
-        if not path.exists() and fits_exists(cr_ind):
-            response = requests.get(fits_url(cr_ind), stream=True)
-            with open(path, 'wb') as out_file:
+        fits_fname = ph_path / f'{cr_ind}.fits'
+        if not fits_fname.exists() and fits_exists(cr_ind):
+            response = session.get(fits_url(cr_ind), stream=True)
+            with open(fits_fname, 'wb') as out_file:
                 response.raw.decode_content = True
                 shutil.copyfileobj(response.raw, out_file)
-            plot_STOP_ML(path)
-    g_SML_load_status = True
-    return HttpResponse(g_SML_load_status)
+            full_plot(fits_fname, m_type='stop', carrot=cr_ind)
+    return HttpResponse(True)
 
-def load_daily_STOP_maps():
-    g_load_daily_STOP_status = False
-    print(datetime.now())
+def load_STOP_daily():
+    session = requests.Session()
 
     def date_range(start_date: date, end_date: date):
         days = int((end_date - start_date).days)
@@ -119,73 +126,79 @@ def load_daily_STOP_maps():
         return f'{url}stop_blr0_{fits_date:%y%m%d}.fits'
     
     def fits_exists(fits_date):
-        return requests.head(fits_url(fits_date)).status_code == 200
+        return session.head(fits_url(fits_date)).status_code == 200
 
     try:
         last_sch = CoronalHole.objects.filter(
-            type='SCH').latest('start_time')
+            s_type='SCH').latest('start_time')
         start_date = last_sch.start_time + timedelta(days=1)
     except CoronalHole.DoesNotExist:
-        start_date = date(2024, 7, 19) # test date
+        start_date = test_date
     end_date = date.today()
+    ph_path = settings.BASE_DIR / 'maps/synoptic/daily/photospheric/stop'
+    ph_path.mkdir(parents=True, exist_ok=True)
     for fits_date in date_range(start_date, end_date):
-        ph_path = f'maps/synoptic/daily/photospheric/stop/{fits_date:%y%m%d}.fits'
-        fits_fname = settings.BASE_DIR / ph_path
-        if not fits_fname.exists() and fits_exists(fits_date):
-            response = requests.get(fits_url(fits_date), stream=True)
+        fits_fname = ph_path / f'{fits_date:%y%m%d}.fits'
+        if not fits_fname.exists():
+            if not fits_exists(fits_date): continue
+            response = session.get(fits_url(fits_date), stream=True)
             with open(fits_fname, 'wb') as out_file:
                 response.raw.decode_content = True
                 shutil.copyfileobj(response.raw, out_file)
-        fits_time = datetime(fits_date.year, fits_date.month, fits_date.day,
-            tzinfo=timezone.utc)
-        sch = CoronalHole.objects.filter(
-            type='SCH', start_time=fits_time)
-        if not sch:
-            print(f'processing {fits_date:%y%m%d}.fits')
-            plot_STOP_ML(fits_fname, fits_date=fits_date)
+        fits_time = datetime.combine(fits_date, zero_time) # STOP fits haven't obs time!
+        full_plot(fits_fname, fits_time)
+    return HttpResponse(True)
+
+def full_plot(fits_fname, m_type, plot_CH=False, fits_time=None, carrot=None):
+    uid = random.randint(100000, 999999) # Time execution info
+    exec_time = datetime.now()
+    print(f'plot ML {uid:10d} started at ', exec_time)
+        
+    def fits2map(fits_fname): # m_type, fits_time
+        data, header = fits.getdata(fits_fname, header=True)
+        if m_type == 'stop':
+            data = np.flip(data, 0)
+            header['CUNIT1'] = 'deg'
+            header['CUNIT2'] = 'deg'
+            header['CDELT1'] = 1 / 2
+            header['CDELT2'] = 1 / 2
+            header['CTYPE1'] = 'CRLN-CAR'
+            header['CTYPE2'] = 'CRLT-CAR'
+            header['CRVAL1'] = 180
+            if fits_time:
+                header['DATE'] = f'{fits_time:%Y-%m-%d}'
+        return Map(data, header)
     
-    g_load_daily_STOP_status = True
-    print(datetime.now())
-    return HttpResponse(g_load_daily_STOP_status)
-
-def plot_STOP_ML(fits_fname, fits_date=None):
-
     def cea_to_car(m, method='interp'):
 
         def is_cea_map(m, error=False):
             return utils._check_projection(m, 'CEA', error=error)
         
         methods = {'adaptive': reproject_adaptive,
-                'interp': reproject_interp,
-                'exact': reproject_exact}
+            'interp': reproject_interp,
+            'exact': reproject_exact}
         if method not in methods:
             raise ValueError(f'method must be one of {methods.keys()} '
-                            f'(got {method})')
+                f'(got {method})')
         reproject = methods[method]
-
-        from pfsspy.utils import is_full_sun_synoptic_map
         is_full_sun_synoptic_map(m, error=True)
         is_cea_map(m, error=True)
-
         header_out = m.wcs.to_header()
         header_out['CTYPE1'] = header_out['CTYPE1'][:5] + 'CAR'
         header_out['CTYPE2'] = header_out['CTYPE2'][:5] + 'CAR'
         header_out['CDELT2'] = 1 / 2
-        #header_out['CRVAL1'] = xxx
         wcs_out = WCS(header_out, fix=False)
-
         data_out = reproject(m, wcs_out, shape_out=m.data.shape,
-                            return_footprint=False)
-
+            return_footprint=False)
         return Map(data_out, header_out)
 
-    def source_surface_pils(ss_br):
-        contours = measure.find_contours(ss_br.data, 0)
-        contours = [ss_br.wcs.pixel_to_world(c[:, 1], c[:, 0]) for c in contours]
+    def source_surface_pils(ss_map):
+        contours = measure.find_contours(ss_map.data, 0)
+        contours = [ss_map.wcs.pixel_to_world(c[:, 1], c[:, 0]) for c in contours]
         return contours
 
-    def polarity_convector(string):
-        return None if string == '0' else int(string) > 0
+    def polarity_convector(value):
+        return None if value == 0 else int(value) > 0
     
     def get_seeds(r_coef, divisor, frame):
         r = r_coef * const.R_sun
@@ -195,167 +208,236 @@ def plot_STOP_ML(fits_fname, fits_date=None):
         lon, lat = (lon * u.rad).ravel(), (lat * u.rad).ravel()
         return SkyCoord(lon, lat, r, frame=frame)
     
-    data, header = fits.getdata(fits_fname, header=True)
-    data = np.flip(data, 0)
-    data_ratio = data.shape[0]/data.shape[1]
-    header['CUNIT1'] = 'deg'
-    header['CUNIT2'] = 'deg'
-    header['CDELT1'] = 1 / 2
-    header['CDELT2'] = 1 / 2
-    header['CTYPE1'] = 'CRLN-CAR'
-    header['CTYPE2'] = 'CRLT-CAR'
-    header['CRVAL1'] = 180
-    if fits_date:
-        start_time = datetime(fits_date.year, fits_date.month, fits_date.day,
-            tzinfo=timezone.utc)
-        end_time = start_time + timedelta(days=1)
-    else:
-        cr_ind = header['CARROT']
-        start_time = carrington_rotation_time(
-            cr_ind).to_datetime(timezone=timezone.utc)
-        end_time = carrington_rotation_time(
-            cr_ind + 1).to_datetime(timezone=timezone.utc)
-    stop_map = Map(data, header)
+    def spherical_metric(point1, point2):
+        lam = np.array([point1[0], point2[0]])
+        phi = np.array([point1[1], point2[1]])
+        lam /= 2 # data array correction
+        phi = phi/2 - 90
+        lam *= np.pi / 180 # radian convertion
+        phi *= np.pi / 180
+        d_phi = phi[1] - phi[0]
+        d_lam = lam[1] - lam[0]
+        hav_theta = .5 * (1 - np.cos(d_phi) + np.cos(phi[0]) * np.cos(phi[1]) * (1 - np.cos(d_lam)))
+        return 2 * np.arcsin(hav_theta**.5) * 180 / np.pi
+    
+    def median(cluster):
+        v = pdist(cluster, metric=spherical_metric)
+        m = squareform(v)
+        min_dist = np.inf
+        for i in range(len(cluster)):
+            dist_sum = sum(m[i])
+            if dist_sum < min_dist:
+                min_dist, ind = dist_sum, i
+        return cluster[ind]
+    
+    def prob_reduce(data, limit=np.inf):
+        size = len(data)
+        if size > limit:
+            reduction_factor = size / limit
+            probability = 1 / reduction_factor
+            mask = np.random.rand(size) < probability
+            data = data[mask] # not uniform
+        return data
 
-    norm = ImageNormalize(stretch=HistEqStretch(stop_map.data))
-    fig = plt.figure()
-    ax = fig.add_subplot(projection=stop_map)
-    stop_map.plot(cmap='bwr', norm=norm, axes=ax)
-    norm = cls.SymLogNorm(linthresh=1, 
-        vmin=stop_map.min(), vmax=stop_map.max())
-    fig.colorbar(plt.cm.ScalarMappable(norm=norm, cmap='bwr'),
-        ax=ax, fraction=0.047*data_ratio)
-    title_prefix = 'Photospheric magnetogram, '
+    ph_map = fits2map(fits_fname)
+    height, width = ph_map.data.shape
+    data_ratio = height / width
     path = settings.BASE_DIR / 'media/synoptic/'
-    if fits_date:
-        title = f'date {fits_date:%Y-%m-%d}' # read from FITS obs_time?
+
+    # plot photospheric figure
+    fig = Figure()
+    ax = fig.add_subplot(projection=ph_map)
+    norm = ImageNormalize(stretch=HistEqStretch(ph_map.data))
+    ph_map.plot(axes=ax, cmap='bwr', norm=norm)
+    norm = cls.SymLogNorm(vmin=ph_map.min(), vmax=ph_map.max())
+    cbar = fig.colorbar(mpl.cm.ScalarMappable(norm=norm, cmap='bwr'),
+        ax=ax, fraction=0.047*data_ratio)
+    cbar.ax.set_ylabel(r'$B_{r}$, G', rotation=-90)
+    title = 'Photospheric magnetogram, '
+    if fits_time:
+        title += f'date {fits_time:%Y-%m-%d}'
+        ph_name = f'PH_{fits_time:%y%m%d}.png'
         path = path / 'daily'
-        ph_name = f'PH_{fits_date:%y%m%d}.png'
-    else:
-        title = f'CR {cr_ind}'
-        ph_name = f'PH_{cr_ind}.png'
-    ph_path = path / 'photospheric/stop/'
-    plt.title(f'{title_prefix}{title}')
-    plt.savefig(ph_path / ph_name, bbox_inches='tight')
+    if carrot:
+        title += f'CR {carrot}'
+        ph_name = f'PH_{carrot}.png'
+    ph_path = path / f'photospheric/{m_type}/'
+    ph_path.mkdir(parents=True, exist_ok=True)
+    ax.set_title(title)
+    fig.savefig(ph_path / ph_name, bbox_inches='tight')
+    print(f'PH fig {uid:10d} saved in ', datetime.now() - exec_time)
+    exec_time = datetime.now()
 
     nrho, rss = 35, 2.5
-    stop_map = utils.car_to_cea(stop_map)
-    pfss_in = utils.pfsspy.Input(stop_map, nrho, rss)
+    cea_ph_map = utils.car_to_cea(ph_map)
+    pfss_in = utils.pfsspy.Input(cea_ph_map, nrho, rss)
     pfss_out = utils.pfsspy.pfss(pfss_in)
-    ss_br = pfss_out.source_surface_br
-    ss_br = cea_to_car(ss_br)
-
-    fig = plt.figure()
-    ax = plt.subplot(projection=ss_br)
-    for item in source_surface_pils(ss_br):
+    cea_ss_map = pfss_out.source_surface_br
+    ss_map = cea_to_car(cea_ss_map)
+    print(f'PFSS {uid:10d} calculated in ', datetime.now() - exec_time)
+    exec_time = datetime.now()
+    
+    # plot source surface figure
+    fig = Figure()
+    ax = fig.add_subplot(projection=ss_map)
+    for item in source_surface_pils(ss_map):
         ax.plot_coord(item, 'k')
     norm = cls.CenteredNorm()
-    ss_br.plot(cmap='bwr', norm=norm)
-    plt.colorbar(fraction=0.047*data_ratio)
-
-    title_prefix = 'Source surface magnetogram, '
-    if fits_date:
-        ss_name = f'SS_{fits_date:%y%m%d}.png'
-    else:
-        ss_name = f'SS_{cr_ind}.png'
-    ss_path = path / 'source_surface/stop/'
-    plt.title(f'{title_prefix}{title}')
-    plt.savefig(ss_path / ss_name, bbox_inches='tight')
+    ss_map.plot(axes=ax, cmap='bwr', norm=norm)
+    cbar = fig.colorbar(mpl.cm.ScalarMappable(cmap='bwr', norm=norm),
+        ax=ax, fraction=0.047*data_ratio)
+    cbar.ax.set_ylabel(r'$B_{r}$, G', rotation=-90)
+    title = 'Source surface magnetogram, '
+    if fits_time:
+        title += f'date {fits_time:%Y-%m-%d}'
+        ss_name = f'SS_{fits_time:%y%m%d}.png'
+    if carrot:
+        title += f'CR {carrot}'
+        ss_name = f'SS_{carrot}.png'
+    ss_path = path / f'source_surface/{m_type}/'
+    ss_path.mkdir(parents=True, exist_ok=True)
+    ax.set_title(title)
+    fig.savefig(ss_path / ss_name, bbox_inches='tight')
+    print(f'SS fig {uid:10d} saved in ', datetime.now() - exec_time)
+    exec_time = datetime.now()
 
     tracer = tracing.FortranTracer(max_steps=3000)
-
     ss_seeds = get_seeds(2.5, 16, pfss_out.coordinate_frame)
     ss_field_lines = tracer.trace(ss_seeds, pfss_out)
+    print(f'SS seed ML {uid:10d} traced in ', datetime.now() - exec_time)
+    exec_time = datetime.now()
+
+    if fits_time:
+        start_time = fits_time # datetime.fromisoformat(ph_map.meta['DATE'])
+        end_time = start_time + timedelta(days=1)
+    if carrot:
+        start_time = carrington_rotation_time(
+            carrot).to_datetime(timezone=timezone.utc)
+        end_time = carrington_rotation_time(
+            carrot + 1).to_datetime(timezone=timezone.utc)
+    if m_type == 'stop':
+        ML_type = 'dSML' if fits_time else 'SML'
+    elif m_type == 'gong':
+        ML_type = 'dGML' if fits_time else 'GML'
     lineset = MagneticLineSet.objects.create(
-        type='dSML' if fits_date else 'SML',
-        start_time=start_time,
-    )  
+        type=ML_type, start_time=start_time)
+    
+    lines_batch, points_batch = [], []
     for field_line in ss_field_lines.open_field_lines:
         coords = field_line.coords
         if len(coords) > 1:
-            line = MagneticLine.objects.create(
-                lineset=lineset,
-                polarity=polarity_convector(field_line.polarity),
-            )
+            line = MagneticLine(lineset=lineset,
+                polarity=polarity_convector(field_line.polarity))
+            lines_batch.append(line)
             for item in coords:
                 lat = float(item.lat.degree)
                 lon = float(item.lon.degree)
-                MagneticLinePoint.objects.create( # PML order by id
+                point = MagneticLinePoint(
                     lon=lon,
                     lat=lat,
                     r=item.radius / const.R_sun,
                     line=line,
                 )
-
-    height, width = stop_map.data.shape    
+                points_batch.append(point)
+        
+    MagneticLine.objects.bulk_create(lines_batch)
+    MagneticLinePoint.objects.bulk_create(points_batch)
+    lines_batch, points_batch = [], []
+    print(f'SS seed ML {uid:10d} saved in ', datetime.now() - exec_time)
+    exec_time = datetime.now()
+    
     ph_seeds = get_seeds(1, height, pfss_out.coordinate_frame)
     ph_field_lines = tracer.trace(ph_seeds, pfss_out)
+    print(f'PH seed ML {uid:10d} traced in ', datetime.now() - exec_time)
+    exec_time = datetime.now()
 
-    pol = np.zeros((height, width)) # pol[lat][lon] = polarity
+    Z = [] # tupled polarity
     ratio = height / 180
     for field_line in ph_field_lines.open_field_lines:
         ph_footpoint = field_line.solar_footpoint
         lon = round(ph_footpoint.lon.degree * ratio) % width
         lat = round((ph_footpoint.lat.degree + 90) * ratio) % height
-        pol[lat][lon] = field_line.polarity # not unipolar for stop_map.data!
+        Z.append(lat, lon, field_line.polarity)
+    print(f'polarity matix {uid:10d} calculated in ', datetime.now() - exec_time)
+    exec_time = datetime.now()
     
-    Z = np.array([(lat, lon, pol[lat][lon]) for lat in range(height) for lon in range(width)])
+    Z = np.array(Z)
     mask = (Z[:, 2] == 1) | (Z[:, 2] == -1)
     X = Z[mask][:, :2]
-    db = DBSCAN(eps=10, min_samples=5).fit(X) #! eps=5, min_samp=10
+    db = DBSCAN(eps=5, min_samples=10, metric=spherical_metric).fit(X) #! eps=5, min_samp=10
     labels = db.labels_
+    print(f'DBSCAN {uid:10d} calculated in ', datetime.now() - exec_time)
+    exec_time = datetime.now()
 
     unique_labels = set(labels)
     core_samples_mask = np.zeros_like(labels, dtype=bool)
     core_samples_mask[db.core_sample_indices_] = True
 
-    selem = disk(1)
+    if plot_CH:
+        selem = disk(3)
     one_px_area = 1.4743437*10**14 # m^2 sun_surface/full_solid_angle
     for k in unique_labels:
         class_member_mask = labels == k
-        xy = X[class_member_mask & core_samples_mask]
-        if k != -1 and len(xy):
+        cluster = X[class_member_mask & core_samples_mask]
+        size = len(cluster)
+        if k > 0 and size:
             ch = CoronalHole.objects.create(
-                start_time=start_time,
-                type='SCH',
-            )
-
-            cluster_image = np.zeros((height, width))
+                start_time=start_time, end_time=end_time, s_type='SCH')
+            if plot_CH:
+                cluster_image = np.zeros((height, width))
             mag_sum, max_flux = 0, 0
-            for lat, lon in xy:
-                lat, lon = int(lat), int(lon)
-                Br = stop_map.data[lat][lon]
-                cluster_image[lat, lon] = 1
-                chp = CoronalHolePoint.objects.create(
-                    lon=lon,
-                    lat=lat,
-                    Br=Br,
-                    ch=ch,
-                )
+            ch_pts_batch = []
+            batch_limit = 20000
+            for lat, lon in cluster:
+                Br = ph_map.data[lat][lon]
+                if plot_CH:
+                    cluster_image[lat, lon] = 1
+                point = CoronalHolePoint(
+                    lon=lon, lat=lat, Br=Br, ch=ch)
                 mag_sum += Br
                 max_flux = max(max_flux, abs(Br)) # no sign!
-            cluster_image = binary_closing(cluster_image, selem)
-
-            center = np.array(measure.centroid(cluster_image)) / 2
-            ch.location = f'{center[0]:>6.2f} {center[1] - 90:>7.2f}'
-            ch.sol = f'SOL{fits_date:%Y-%m-%dT%H:%M}L{center[0]:.2f}C{center[1]:.2f}'
-            ch.area = len(xy) * one_px_area * 10**-12
-            ch.mag_flux = mag_sum * one_px_area * 10**4 # cm^2 correction
-            ch.avg_flux = mag_sum / len(xy) # cm^2 correction
-            ch.max_flux = max_flux
+                ch_pts_batch.append(point)
+                if len(ch_pts_batch) >= batch_limit:
+                    CoronalHolePoint.objects.bulk_create(ch_pts_batch)
+                    ch_pts_batch = []
+            if ch_pts_batch:
+                CoronalHolePoint.objects.bulk_create(ch_pts_batch)
+                ch_pts_batch = []
+            print(f'CH point {uid:10d} for {k}-label saved in ', datetime.now() - exec_time)
+            exec_time = datetime.now()
+            
+            if plot_CH:
+                cluster_image = binary_closing(cluster_image, selem)
+            reduced_cluster = prob_reduce(cluster, limit=1024)
+            center = median(reduced_cluster)
+            print(f'CH median {uid:10d} for {k}-label calculated in ', datetime.now() - exec_time)
+            exec_time = datetime.now()
+            center /= ratio
+            ch.sol = f'SOL{fits_time:%Y-%m-%dT%H:%M}L{center[0]:.2f}C{center[1]:.2f}'
+            center[1] -= 90
+            ch.lon, ch.lat = center
+            ch.area = size * one_px_area * 10**-12 # Mm^2
+            ch.mag_flux = mag_sum * one_px_area * 10**4 # Mx
+            ch.avg_flux = mag_sum / size # G
+            ch.max_flux = max_flux # G
             ch.save()
 
-            contours = measure.find_contours(cluster_image, 0.5)
-            chc = CoronalHoleContour.objects.create(ch=ch)
-            for contour in contours:
-                for point in contour:
-                    lat, lon = point
-                    chcp = CoronalHoleContourPoint.objects.create(
-                        lon=lon,
-                        lat=lat,
-                        contour=chc,
-                    )
-            # border point processing!
+            if plot_CH:
+                contours = measure.find_contours(cluster_image, 0.5)
+                for contour in contours:
+                    chc = CoronalHoleContour.objects.create(ch=ch)
+                    contour = prob_reduce(contour, limit=128)
+                    contour /= ratio
+                    contour[1] -= 90
+                    chc_pts_batch = []
+                    for point in contour:
+                        lat, lon = point
+                        point = CoronalHoleContourPoint(
+                            lon=lon, lat=lat, contour=chc)
+                        chc_pts_batch.append(point)
+                    CoronalHoleContourPoint.objects.bulk_create(chc_pts_batch)
+                chc_pts_batch = []
+                print(f'CH contours {uid:10d} for {k}-label saved in ', datetime.now() - exec_time)
+                exec_time = datetime.now()
 
-# def load_GONG_maps !
-# def plot_GONG_ML !
+    print(f'{uid:10d} finished in ', datetime.now() - exec_time)

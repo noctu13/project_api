@@ -3,31 +3,13 @@ from django.db import models
 from .common import *
 
 
-class HEKCoronalHole(models.Model):
-    spec_id = models.CharField(max_length=24)
-    sol = models.CharField(max_length=34)
+class CoronalHole(models.Model):
+    sol = models.CharField(max_length=34, null=True)
     start_time = models.DateTimeField()
     end_time = models.DateTimeField()
-
-
-class HEKCoronalHoleContourPoint(models.Model):
-    lon = models.FloatField()
-    lat = models.FloatField()
-    ch = models.ForeignKey(
-        HEKCoronalHole, 
-        on_delete=models.CASCADE,
-        related_name='contour',
-    )
-
-    def __str__(self):
-        return f'{self.lon} {self.lat}'
-
-
-class CoronalHole(models.Model):
-    start_time = models.DateTimeField()
-    type = models.CharField(max_length=3, choices=ch_dict.items())
-    location = models.CharField(max_length=14, null=True)
-    sol = models.CharField(max_length=34, null=True)
+    lon = models.FloatField(null=True)
+    lat = models.FloatField(null=True)
+    s_type = models.CharField(max_length=3, choices=ch_dict.items())
     area = models.FloatField(null=True)
     mag_flux = models.FloatField(null=True)
     avg_flux = models.FloatField(null=True)
@@ -70,7 +52,7 @@ class CoronalHoleContourPoint(models.Model):
 
 class MagneticLineSet(models.Model):
     start_time = models.DateTimeField()
-    type = models.CharField(max_length=4, choices=ml_dict.items())
+    s_type = models.CharField(max_length=4, choices=ml_dict.items())
 
 
 class MagneticLine(models.Model):

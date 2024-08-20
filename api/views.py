@@ -1,12 +1,13 @@
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from rest_framework import generics
 from django.db.models import Q
 
 from .common import *
-from .models import HEKCoronalHole, CoronalHole, MagneticLineSet
+from .utils import zero_time
+from .models import CoronalHole, MagneticLineSet
 from .serializers import (
-    HEKCoronalHoleSerializer, CoronalHoleSerializer, MagneticLineSetSerializer)
+    CoronalHoleSerializer, MagneticLineSetSerializer)
 
 
 class EventsView(generics.ListAPIView):
@@ -16,15 +17,12 @@ class EventsView(generics.ListAPIView):
         year = self.kwargs.get('year')
         month = self.kwargs.get('month')
         day = self.kwargs.get('day')
-        if short_type == 'HCH':
-            events_query = HEKCoronalHole.objects.all()
-        elif short_type in ch_dict:
-            events_query = CoronalHole.objects.filter(type=short_type)
+        if short_type in ch_dict:
+            events_query = CoronalHole.objects.filter(s_type=short_type)
         elif short_type in ml_dict:
-            events_query = MagneticLineSet.objects.filter(type=short_type)
+            events_query = MagneticLineSet.objects.filter(s_type=short_type)
         if year and month and day:
-            query_day = datetime(year, month, day, 0, 0, 0,
-                tzinfo=timezone.utc)
+            query_day = datetime.combine(date(year, month, day), zero_time)
             query1 = Q(start_time__gt=query_day)
             query2 = Q(start_time__lte=query_day + timedelta(days=1))
             queryset = events_query.filter(query1 & query2).order_by(
@@ -33,9 +31,7 @@ class EventsView(generics.ListAPIView):
     
     def get_serializer_class(self):
         short_type = self.kwargs.get('short_type')
-        if short_type == 'HCH':
-            serializer = HEKCoronalHoleSerializer
-        elif short_type in ch_dict:
+        if short_type in ch_dict:
             serializer = CoronalHoleSerializer
         elif short_type in ml_dict:
             serializer = MagneticLineSetSerializer
