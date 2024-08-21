@@ -264,9 +264,11 @@ def full_plot(fits_fname, m_type, plot_CH=False, fits_time=None, carrot=None):
     if carrot:
         title += f'CR {carrot}'
         ph_name = f'PH_{carrot}.png'
+    ax.set_title(title)
+    ax.set_xlabel('Carrington longitude')
+    ax.set_ylabel('Carrington latitude')
     ph_path = path / f'photospheric/{m_type}/'
     ph_path.mkdir(parents=True, exist_ok=True)
-    ax.set_title(title)
     fig.savefig(ph_path / ph_name, bbox_inches='tight')
     print(f'PH fig {uid:10d} saved in ', datetime.now() - exec_time)
     exec_time = datetime.now()
@@ -297,11 +299,42 @@ def full_plot(fits_fname, m_type, plot_CH=False, fits_time=None, carrot=None):
     if carrot:
         title += f'CR {carrot}'
         ss_name = f'SS_{carrot}.png'
+    ax.set_title(title)
+    ax.set_xlabel('Carrington longitude')
+    ax.set_ylabel('Carrington latitude')
     ss_path = path / f'source_surface/{m_type}/'
     ss_path.mkdir(parents=True, exist_ok=True)
-    ax.set_title(title)
     fig.savefig(ss_path / ss_name, bbox_inches='tight')
     print(f'SS fig {uid:10d} saved in ', datetime.now() - exec_time)
+    exec_time = datetime.now()
+
+    # plot solar wind figure
+    W_s = 6.25 * (ss_map.data / ph_map.data) ** 2
+    sw_data = 393.2 + 192.9 * W_s + 3.94 * abs(ss_map.data) - 0.019 * abs(ph_map.data)
+    sw_map = Map(sw_data, ph_map.meta)
+
+    fig = Figure()
+    ax = fig.add_subplot(projection=sw_map)
+    norm = ImageNormalize(stretch=HistEqStretch(sw_map.data))
+    sw_map.plot(axes=ax, cmap='RdBu_r', norm=norm)
+    norm = cls.Normalize(vmin=250, vmax=750)
+    cbar = fig.colorbar(mpl.cm.ScalarMappable(cmap='RdBu_r', norm=norm),
+        ax=ax, fraction=0.047*data_ratio)
+    cbar.ax.set_ylabel(r'$V_{r}$, Km/s', rotation=-90, labelpad=15)
+    title = 'Source surface solar wind, '
+    if fits_time:
+        title += f'date {fits_time:%Y-%m-%d}'
+        sw_name = f'SW_{fits_time:%y%m%d}.png'
+    if carrot:
+        title += f'CR {carrot}'
+        sw_name = f'SW_{carrot}.png'
+    ax.set_title(title)
+    ax.set_xlabel('Carrington longitude')
+    ax.set_ylabel('Carrington latitude')
+    sw_path = path / f'solar_wind/{m_type}/'
+    sw_path.mkdir(parents=True, exist_ok=True)
+    fig.savefig(sw_path / sw_name, bbox_inches='tight')
+    print(f'SW fig {uid:10d} saved in ', datetime.now() - exec_time)
     exec_time = datetime.now()
 
     tracer = tracing.FortranTracer(max_steps=3000)
