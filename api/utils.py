@@ -133,7 +133,7 @@ def load_STOP_daily():
     try:
         last_sch = CoronalHole.objects.filter(
             s_type='SCH').latest('start_time')
-        start_date = last_sch.start_time + timedelta(days=1)
+        start_date = last_sch.start_time.date() + timedelta(days=1)
     except CoronalHole.DoesNotExist:
         start_date = test_date
     end_date = date.today()
@@ -147,16 +147,15 @@ def load_STOP_daily():
             with open(fits_fname, 'wb') as out_file:
                 response.raw.decode_content = True
                 shutil.copyfileobj(response.raw, out_file)
-        fits_time = datetime.combine(fits_date, zero_time) # STOP fits haven't obs time!
-        full_plot(fits_fname, 'stop', True, fits_time)
+        full_plot(fits_fname, 'stop', fits_date, True, True)
     return HttpResponse(True)
 
-def full_plot(fits_fname, m_type, plot_CH=False, fits_time=None, carrot=None):
+def full_plot(fits_fname, m_type, fits_date=None, plot_CH=False, plot_contour=False, carrot=None):
     uid = random.randint(100000, 999999) # Time execution info
     exec_time = datetime.now()
     print(f'plot ML {uid:10d} started at ', exec_time)
         
-    def fits2map(fits_fname): # m_type, fits_time
+    def fits2map(fits_fname): # m_type, fits_date
         data, header = fits.getdata(fits_fname, header=True)
         if m_type == 'stop':
             data = np.flip(data, 0)
@@ -167,8 +166,8 @@ def full_plot(fits_fname, m_type, plot_CH=False, fits_time=None, carrot=None):
             header['CTYPE1'] = 'CRLN-CAR'
             header['CTYPE2'] = 'CRLT-CAR'
             header['CRVAL1'] = 180
-            if fits_time:
-                header['DATE'] = f'{fits_time:%Y-%m-%d}'
+            if fits_date:
+                header['DATE'] = f'{fits_date:%Y-%m-%d}'
         return Map(data, header)
     
     def cea_to_car(m, method='interp'):
@@ -257,9 +256,9 @@ def full_plot(fits_fname, m_type, plot_CH=False, fits_time=None, carrot=None):
         ax=ax, fraction=0.047*data_ratio)
     cbar.ax.set_ylabel(r'$B_{r}$, G', rotation=-90)
     title = 'Photospheric magnetogram, '
-    if fits_time:
-        title += f'date {fits_time:%Y-%m-%d}'
-        ph_name = f'PH_{fits_time:%y%m%d}.png'
+    if fits_date:
+        title += f'date {fits_date:%Y-%m-%d}'
+        ph_name = f'PH_{fits_date:%y%m%d}.png'
         path = path / 'daily'
     if carrot:
         title += f'CR {carrot}'
@@ -293,9 +292,9 @@ def full_plot(fits_fname, m_type, plot_CH=False, fits_time=None, carrot=None):
         ax=ax, fraction=0.047*data_ratio)
     cbar.ax.set_ylabel(r'$B_{r}$, G', rotation=-90)
     title = 'Source surface magnetogram, '
-    if fits_time:
-        title += f'date {fits_time:%Y-%m-%d}'
-        ss_name = f'SS_{fits_time:%y%m%d}.png'
+    if fits_date:
+        title += f'date {fits_date:%Y-%m-%d}'
+        ss_name = f'SS_{fits_date:%y%m%d}.png'
     if carrot:
         title += f'CR {carrot}'
         ss_name = f'SS_{carrot}.png'
@@ -322,9 +321,9 @@ def full_plot(fits_fname, m_type, plot_CH=False, fits_time=None, carrot=None):
         ax=ax, fraction=0.047*data_ratio)
     cbar.ax.set_ylabel(r'$V_{r}$, Km/s', rotation=-90, labelpad=15)
     title = 'Source surface solar wind, '
-    if fits_time:
-        title += f'date {fits_time:%Y-%m-%d}'
-        sw_name = f'SW_{fits_time:%y%m%d}.png'
+    if fits_date:
+        title += f'date {fits_date:%Y-%m-%d}'
+        sw_name = f'SW_{fits_date:%y%m%d}.png'
     if carrot:
         title += f'CR {carrot}'
         sw_name = f'SW_{carrot}.png'
@@ -343,8 +342,8 @@ def full_plot(fits_fname, m_type, plot_CH=False, fits_time=None, carrot=None):
     print(f'SS seed ML {uid:10d} traced in ', datetime.now() - exec_time)
     exec_time = datetime.now()
 
-    if fits_time:
-        start_time = fits_time # datetime.fromisoformat(ph_map.meta['DATE'])
+    if fits_date:
+        start_time = datetime.combine(fits_date, zero_time) # datetime.fromisoformat(ph_map.meta['DATE'])
         end_time = start_time + timedelta(days=1)
         obstime = start_time + timedelta(hours=8) # no obstime!
     if carrot:
@@ -354,9 +353,9 @@ def full_plot(fits_fname, m_type, plot_CH=False, fits_time=None, carrot=None):
             carrot + 1).to_datetime(timezone=timezone.utc)
         obstime = end_time
     if m_type == 'stop':
-        ML_type = 'dSML' if fits_time else 'SML'
+        ML_type = 'dSML' if fits_date else 'SML'
     elif m_type == 'gong':
-        ML_type = 'dGML' if fits_time else 'GML'
+        ML_type = 'dGML' if fits_date else 'GML'
     lineset = MagneticLineSet.objects.create(
         s_type=ML_type, start_time=start_time)
     
@@ -385,101 +384,105 @@ def full_plot(fits_fname, m_type, plot_CH=False, fits_time=None, carrot=None):
     print(f'SS seed ML {uid:10d} saved in ', datetime.now() - exec_time)
     exec_time = datetime.now()
     
-    ph_seeds = get_seeds(1, height, pfss_out.coordinate_frame)
-    ph_field_lines = tracer.trace(ph_seeds, pfss_out)
-    print(f'PH seed ML {uid:10d} traced in ', datetime.now() - exec_time)
-    exec_time = datetime.now()
-
-    Z = [] # tupled polarity
-    ratio = height / 180
-    for field_line in ph_field_lines.open_field_lines:
-        ph_footpoint = field_line.solar_footpoint
-        lon = round(ph_footpoint.lon.degree * ratio) % width
-        lat = round((ph_footpoint.lat.degree + 90) * ratio) % height
-        Z.append((lat, lon, field_line.polarity))
-    print(f'polarity matix {uid:10d} calculated in ', datetime.now() - exec_time)
-    exec_time = datetime.now()
-    
-    Z = np.array(Z)
-    mask = (Z[:, 2] == 1) | (Z[:, 2] == -1)
-    X = Z[mask][:, :2]
-    db = DBSCAN(eps=5, min_samples=10, metric=spherical_metric).fit(X) #! eps=5, min_samp=10
-    labels = db.labels_
-    print(f'DBSCAN {uid:10d} calculated in ', datetime.now() - exec_time)
-    exec_time = datetime.now()
-
-    unique_labels = set(labels)
-    core_samples_mask = np.zeros_like(labels, dtype=bool)
-    core_samples_mask[db.core_sample_indices_] = True
-
     if plot_CH:
-        selem = disk(3)
-    one_px_area = 1.4743437*10**14 # m^2 sun_surface/full_solid_angle
-    for k in unique_labels:
-        class_member_mask = labels == k
-        cluster = X[class_member_mask & core_samples_mask]
-        size = len(cluster)
-        if k > 0 and size:
-            ch = CoronalHole.objects.create(
-                start_time=start_time, end_time=end_time, s_type='SCH')
-            if plot_CH:
-                cluster_image = np.zeros((height, width))
-            mag_sum, max_flux = 0, 0
-            ch_pts_batch = []
-            batch_limit = 20000
-            for lat, lon in cluster:
-                lat, lon = int(lat), int(lon)
-                Br = ph_map.data[lat][lon]
-                if plot_CH:
-                    cluster_image[lat, lon] = 1
-                point = CoronalHolePoint(
-                    lon=lon, lat=lat, Br=Br, ch=ch) # convert!!!
-                mag_sum += Br
-                max_flux = max(max_flux, abs(Br)) # no sign!
-                ch_pts_batch.append(point)
-                if len(ch_pts_batch) >= batch_limit:
+        ph_seeds = get_seeds(1, height, pfss_out.coordinate_frame)
+        ph_field_lines = tracer.trace(ph_seeds, pfss_out)
+        print(f'PH seed ML {uid:10d} traced in ', datetime.now() - exec_time)
+        exec_time = datetime.now()
+
+        Z = [] # tupled polarity
+        ratio = height / 180
+        for field_line in ph_field_lines.open_field_lines:
+            ph_footpoint = field_line.solar_footpoint
+            lon = round(ph_footpoint.lon.degree * ratio) % width
+            lat = round((ph_footpoint.lat.degree + 90) * ratio) % height
+            Z.append((lat, lon, field_line.polarity))
+        print(f'polarity matix {uid:10d} calculated in ', datetime.now() - exec_time)
+        exec_time = datetime.now()
+        
+        Z = np.array(Z)
+        mask = (Z[:, 2] == 1) | (Z[:, 2] == -1)
+        X = Z[mask][:, :2]
+        db = DBSCAN(eps=5, min_samples=10, metric=spherical_metric).fit(X) #! eps=5, min_samp=10
+        labels = db.labels_
+        print(f'DBSCAN {uid:10d} calculated in ', datetime.now() - exec_time)
+        exec_time = datetime.now()
+
+        unique_labels = set(labels)
+        core_samples_mask = np.zeros_like(labels, dtype=bool)
+        core_samples_mask[db.core_sample_indices_] = True
+
+        if plot_contour:
+            selem = disk(3)
+        one_px_area = 1.4743437*10**14 # m^2 sun_surface/full_solid_angle
+        for k in unique_labels:
+            class_member_mask = labels == k
+            cluster = X[class_member_mask & core_samples_mask]
+            size = len(cluster)
+            if k > 0 and size:
+                ch = CoronalHole.objects.create(
+                    start_time=start_time, end_time=end_time, s_type='SCH')
+                if plot_contour:
+                    cluster_image = np.zeros((height, width))
+                mag_sum, max_flux = 0, 0
+                ch_pts_batch = []
+                batch_limit = 20000
+                for lat, lon in cluster:
+                    lat, lon = int(lat), int(lon)
+                    Br = ph_map.data[lat][lon]
+                    if plot_contour:
+                        cluster_image[lat, lon] = 1
+                    point = CoronalHolePoint(
+                        lon=lon, lat=lat, Br=Br, ch=ch) # convert!!!
+                    mag_sum += Br
+                    max_flux = max(max_flux, abs(Br)) # no sign!
+                    ch_pts_batch.append(point)
+                    if len(ch_pts_batch) >= batch_limit:
+                        CoronalHolePoint.objects.bulk_create(ch_pts_batch)
+                        ch_pts_batch = []
+                if ch_pts_batch:
                     CoronalHolePoint.objects.bulk_create(ch_pts_batch)
                     ch_pts_batch = []
-            if ch_pts_batch:
-                CoronalHolePoint.objects.bulk_create(ch_pts_batch)
-                ch_pts_batch = []
-            print(f'CH point {uid:10d} for {k}-label saved in ', datetime.now() - exec_time)
-            exec_time = datetime.now()
-            
-            if plot_CH:
-                cluster_image = binary_closing(cluster_image, selem)
-            reduced_cluster = prob_reduce(cluster, limit=1024)
-            center = median(reduced_cluster)
-            print(f'CH median {uid:10d} for {k}-label calculated in ', datetime.now() - exec_time)
-            exec_time = datetime.now()
-            center /= ratio
-            ch.sol = f'SOL{obstime:%Y-%m-%dT%H:%M}L{center[0]:.2f}C{center[1]:.2f}'
-            center[0] -= 180
-            center[1] -= 90
-            ch.lon, ch.lat = center
-            ch.area = size * one_px_area * 10**-12 # Mm^2
-            ch.mag_flux = mag_sum * one_px_area * 10**4 # Mx
-            ch.avg_flux = mag_sum / size # G
-            ch.max_flux = max_flux # G
-            ch.save()
-
-            if plot_CH:
-                contours = measure.find_contours(cluster_image, 0.5)
-                for contour in contours:
-                    chc = CoronalHoleContour.objects.create(ch=ch)
-                    contour = prob_reduce(contour, limit=128)
-                    contour /= ratio
-                    contour[0] -= 180
-                    contour[1] -= 90
-                    chc_pts_batch = []
-                    for point in contour:
-                        lat, lon = point
-                        point = CoronalHoleContourPoint(
-                            lon=lon, lat=lat, contour=chc)
-                        chc_pts_batch.append(point)
-                    CoronalHoleContourPoint.objects.bulk_create(chc_pts_batch)
-                chc_pts_batch = []
-                print(f'CH contours {uid:10d} for {k}-label saved in ', datetime.now() - exec_time)
+                print(f'CH point {uid:10d} for {k}-label saved in ', datetime.now() - exec_time)
                 exec_time = datetime.now()
+                
+                if plot_contour:
+                    cluster_image = binary_closing(cluster_image, selem)
+                reduced_cluster = prob_reduce(cluster, limit=1024)
+                center = median(reduced_cluster)
+                print(f'CH median {uid:10d} for {k}-label calculated in ', datetime.now() - exec_time)
+                exec_time = datetime.now()
+                center /= ratio
+                ch.sol = f'SOL{obstime:%Y-%m-%dT%H:%M}L{center[0]:.2f}C{center[1]:.2f}'
+                center[0] -= 180
+                center[1] -= 90
+                ch.lon, ch.lat = center
+                ch.area = size * one_px_area * 10**-12 # Mm^2
+                ch.mag_flux = mag_sum * one_px_area * 10**4 # Mx
+                ch.avg_flux = mag_sum / size # G
+                ch.max_flux = max_flux # G
+                ch.save()
 
-    print(f'{uid:10d} finished in ', datetime.now() - exec_time)
+                if plot_contour:
+                    contours = measure.find_contours(cluster_image, 0.5)
+                    for contour in contours:
+                        chc = CoronalHoleContour.objects.create(ch=ch)
+                        contour = prob_reduce(contour, limit=128)
+                        contour /= ratio
+                        contour[0] -= 180
+                        contour[1] -= 90
+                        chc_pts_batch = []
+                        for point in contour:
+                            lat, lon = point
+                            point = CoronalHoleContourPoint(
+                                lon=lon, lat=lat, contour=chc)
+                            chc_pts_batch.append(point)
+                        CoronalHoleContourPoint.objects.bulk_create(chc_pts_batch)
+                    chc_pts_batch = []
+                    print(f'CH contours {uid:10d} for {k}-label saved in ', datetime.now() - exec_time)
+                    exec_time = datetime.now()
+
+    print(f'CR{carrot} date:{fits_date} {uid:10d} finished in ', datetime.now())
+
+def delete_MLS_by_ID(id):
+    MagneticLineSet.objects.filter(id=id).delete()
