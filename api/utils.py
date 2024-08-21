@@ -27,6 +27,7 @@ from astropy.wcs import WCS
 from sunpy.net import hek, attrs
 from sunpy.coordinates.sun import (
     carrington_rotation_number, carrington_rotation_time)
+from sunpy.coordinates.frames import HeliographicCarrington
 from sunpy.map import Map
 
 from pfsspy import tracing, utils
@@ -211,7 +212,7 @@ def full_plot(fits_fname, m_type, plot_CH=False, fits_time=None, carrot=None):
     def spherical_metric(point1, point2):
         lam = np.array([point1[0], point2[0]])
         phi = np.array([point1[1], point2[1]])
-        lam /= 2 # data array correction
+        lam = lam/2 - 180 # data array correction
         phi = phi/2 - 90
         lam *= np.pi / 180 # radian convertion
         phi *= np.pi / 180
@@ -322,14 +323,16 @@ def full_plot(fits_fname, m_type, plot_CH=False, fits_time=None, carrot=None):
     lineset = MagneticLineSet.objects.create(
         type=ML_type, start_time=start_time)
     
+    obstime = fits_time + timedelta(hours=8)
     lines_batch, points_batch = [], []
     for field_line in ss_field_lines.open_field_lines:
         coords = field_line.coords
         if len(coords) > 1:
+            car_coords = coords.transform_to(HeliographicCarrington(obstime=obstime))
             line = MagneticLine(lineset=lineset,
                 polarity=polarity_convector(field_line.polarity))
             lines_batch.append(line)
-            for item in coords:
+            for item in car_coords:
                 lat = float(item.lat.degree)
                 lon = float(item.lon.degree)
                 point = MagneticLinePoint(
@@ -393,7 +396,7 @@ def full_plot(fits_fname, m_type, plot_CH=False, fits_time=None, carrot=None):
                 if plot_CH:
                     cluster_image[lat, lon] = 1
                 point = CoronalHolePoint(
-                    lon=lon, lat=lat, Br=Br, ch=ch)
+                    lon=lon, lat=lat, Br=Br, ch=ch) # convert!!!
                 mag_sum += Br
                 max_flux = max(max_flux, abs(Br)) # no sign!
                 ch_pts_batch.append(point)
@@ -414,6 +417,7 @@ def full_plot(fits_fname, m_type, plot_CH=False, fits_time=None, carrot=None):
             exec_time = datetime.now()
             center /= ratio
             ch.sol = f'SOL{fits_time:%Y-%m-%dT%H:%M}L{center[0]:.2f}C{center[1]:.2f}'
+            center[0] -= 180
             center[1] -= 90
             ch.lon, ch.lat = center
             ch.area = size * one_px_area * 10**-12 # Mm^2
@@ -428,6 +432,7 @@ def full_plot(fits_fname, m_type, plot_CH=False, fits_time=None, carrot=None):
                     chc = CoronalHoleContour.objects.create(ch=ch)
                     contour = prob_reduce(contour, limit=128)
                     contour /= ratio
+                    contour[0] -= 180
                     contour[1] -= 90
                     chc_pts_batch = []
                     for point in contour:
