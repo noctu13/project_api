@@ -106,12 +106,13 @@ def load_STOP():
     while not fits_exists(end_cr): end_cr -= 1
     for cr_ind in range(start_cr, end_cr + 1):
         fits_fname = ph_path / f'{cr_ind}.fits'
-        if not fits_fname.exists() and fits_exists(cr_ind):
+        if not fits_fname.exists():
+            if not fits_exists(cr_ind): continue
             response = session.get(fits_url(cr_ind), stream=True)
             with open(fits_fname, 'wb') as out_file:
                 response.raw.decode_content = True
                 shutil.copyfileobj(response.raw, out_file)
-            full_plot(fits_fname, m_type='stop', carrot=cr_ind)
+        full_plot(fits_fname, m_type='stop', carrot=cr_ind)
     return HttpResponse(True)
 
 def load_STOP_daily():
@@ -250,7 +251,8 @@ def full_plot(fits_fname, m_type, plot_CH=False, fits_time=None, carrot=None):
     ax = fig.add_subplot(projection=ph_map)
     norm = ImageNormalize(stretch=HistEqStretch(ph_map.data))
     ph_map.plot(axes=ax, cmap='bwr', norm=norm)
-    norm = cls.SymLogNorm(vmin=ph_map.min(), vmax=ph_map.max())
+    norm = cls.SymLogNorm(vmin=ph_map.min(), vmax=ph_map.max(),
+        linthresh=1)
     cbar = fig.colorbar(mpl.cm.ScalarMappable(norm=norm, cmap='bwr'),
         ax=ax, fraction=0.047*data_ratio)
     cbar.ax.set_ylabel(r'$B_{r}$, G', rotation=-90)
@@ -311,19 +313,20 @@ def full_plot(fits_fname, m_type, plot_CH=False, fits_time=None, carrot=None):
     if fits_time:
         start_time = fits_time # datetime.fromisoformat(ph_map.meta['DATE'])
         end_time = start_time + timedelta(days=1)
+        obstime = start_time + timedelta(hours=8) # no obstime!
     if carrot:
         start_time = carrington_rotation_time(
             carrot).to_datetime(timezone=timezone.utc)
         end_time = carrington_rotation_time(
             carrot + 1).to_datetime(timezone=timezone.utc)
+        obstime = end_time
     if m_type == 'stop':
         ML_type = 'dSML' if fits_time else 'SML'
     elif m_type == 'gong':
         ML_type = 'dGML' if fits_time else 'GML'
     lineset = MagneticLineSet.objects.create(
-        type=ML_type, start_time=start_time)
+        s_type=ML_type, start_time=start_time)
     
-    obstime = fits_time + timedelta(hours=8)
     lines_batch, points_batch = [], []
     for field_line in ss_field_lines.open_field_lines:
         coords = field_line.coords
