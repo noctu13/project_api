@@ -363,7 +363,7 @@ def full_plot(fits_fname, m_type, plot_CH=False, fits_time=None, carrot=None):
         ph_footpoint = field_line.solar_footpoint
         lon = round(ph_footpoint.lon.degree * ratio) % width
         lat = round((ph_footpoint.lat.degree + 90) * ratio) % height
-        Z.append(lat, lon, field_line.polarity)
+        Z.append((lat, lon, field_line.polarity))
     print(f'polarity matix {uid:10d} calculated in ', datetime.now() - exec_time)
     exec_time = datetime.now()
     
@@ -395,6 +395,7 @@ def full_plot(fits_fname, m_type, plot_CH=False, fits_time=None, carrot=None):
             ch_pts_batch = []
             batch_limit = 20000
             for lat, lon in cluster:
+                lat, lon = int(lat), int(lon)
                 Br = ph_map.data[lat][lon]
                 if plot_CH:
                     cluster_image[lat, lon] = 1
@@ -419,7 +420,7 @@ def full_plot(fits_fname, m_type, plot_CH=False, fits_time=None, carrot=None):
             print(f'CH median {uid:10d} for {k}-label calculated in ', datetime.now() - exec_time)
             exec_time = datetime.now()
             center /= ratio
-            ch.sol = f'SOL{fits_time:%Y-%m-%dT%H:%M}L{center[0]:.2f}C{center[1]:.2f}'
+            ch.sol = f'SOL{obstime:%Y-%m-%dT%H:%M}L{center[0]:.2f}C{center[1]:.2f}'
             center[0] -= 180
             center[1] -= 90
             ch.lon, ch.lat = center
