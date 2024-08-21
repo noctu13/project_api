@@ -112,7 +112,7 @@ def load_STOP():
             with open(fits_fname, 'wb') as out_file:
                 response.raw.decode_content = True
                 shutil.copyfileobj(response.raw, out_file)
-        full_plot(fits_fname, m_type='stop', carrot=cr_ind)
+        full_plot(fits_fname, 'stop', carrot=cr_ind)
     return HttpResponse(True)
 
 def load_STOP_daily():
@@ -148,7 +148,7 @@ def load_STOP_daily():
                 response.raw.decode_content = True
                 shutil.copyfileobj(response.raw, out_file)
         fits_time = datetime.combine(fits_date, zero_time) # STOP fits haven't obs time!
-        full_plot(fits_fname, fits_time)
+        full_plot(fits_fname, 'stop', True, fits_time)
     return HttpResponse(True)
 
 def full_plot(fits_fname, m_type, plot_CH=False, fits_time=None, carrot=None):
