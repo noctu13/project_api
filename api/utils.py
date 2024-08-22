@@ -238,10 +238,15 @@ def full_plot(fits_fname, m_type, fits_date=None, plot_CH=False, carrot=None):
             data = data[mask] # not uniform
         return data
     
-    def expand_data(data, ratio):
+    def expand_data(data, ratio, unpack=False):
+        if data.ndim == 1:
+            data = np.array([data])
+            unpack = True
         data[:, 0] += 180 # longitude
         data[:, 1] += 90 # latitude
         data *= ratio
+        if unpack:
+            data = data[0]
         return data.astype(int)
     
     def narrow_data(data, ratio):
@@ -435,7 +440,7 @@ def full_plot(fits_fname, m_type, fits_date=None, plot_CH=False, carrot=None):
                 ax.scatter(cluster[:, 0], cluster[:, 1], s=1, color=tuple(col))
                 ch = CoronalHole.objects.create(
                     start_time=start_time, end_time=end_time, s_type='SCH')
-                cluster_image = np.zeros((width, height), dtype=int)
+                cluster_image = np.zeros((height, width), dtype=int)
                 expanded_cluster = expand_data(cluster, ratio)
                 cluster_image[expanded_cluster[:,1], expanded_cluster[:,0]] = 1
                 Br = ph_map.data[expanded_cluster[:,1], expanded_cluster[:,0]]
