@@ -251,8 +251,8 @@ def full_plot(fits_fname, m_type, fits_date=None, plot_CH=False, carrot=None):
     
     def narrow_data(data, ratio):
         data /= ratio
-        data[:, 0] -= 180 # longitude
-        data[:, 1] -= 90 # latitude
+        data[:, 1] -= 180 # longitude
+        data[:, 0] -= 90 # latitude
         return data
 
     ph_map = fits2map(fits_fname)
@@ -428,7 +428,8 @@ def full_plot(fits_fname, m_type, fits_date=None, plot_CH=False, carrot=None):
         core_samples_mask[db.core_sample_indices_] = True
 
         fig = Figure(figsize=(24, 12), dpi=600)
-        ax = fig.add_subplot(projection=ph_map)
+        ax = fig.add_subplot()
+        ax.set_facecolor('#808080')
         colors = [mpl.cm.Spectral(each) for each in np.linspace(0, 1, len(unique_labels))]
 
         one_px_area = 1.4743437*10**14 # m^2 sun_surface/full_solid_angle
@@ -436,7 +437,7 @@ def full_plot(fits_fname, m_type, fits_date=None, plot_CH=False, carrot=None):
             class_member_mask = labels == k
             cluster = open_field_coords[class_member_mask & core_samples_mask]
             size = len(cluster)
-            if k > 0 and size:
+            if k >= 0 and size:
                 ax.scatter(cluster[:, 0], cluster[:, 1], s=1, color=tuple(col))
                 ch = CoronalHole.objects.create(
                     start_time=start_time, end_time=end_time, s_type='SCH')
@@ -484,16 +485,23 @@ def full_plot(fits_fname, m_type, fits_date=None, plot_CH=False, carrot=None):
                             lon=lon, lat=lat, contour=chc)
                         chc_pts_batch.append(point)
                     CoronalHoleContourPoint.objects.bulk_create(chc_pts_batch)
-                    ax.plot(contour[:, 0], contour[:, 1], linewidth=1, color='k')
+                    ax.plot(contour[:, 1], contour[:, 0], linewidth=1, color='k')
                 chc_pts_batch = []
                 print(f'CH contours {uid:10d} for {k}-label saved in ', datetime.now() - exec_time)
                 exec_time = datetime.now()
-        ax.set_xlim(0, width)
-        ax.set_ylim(0, height)
-        ax.set_axis_off()
+        
+        ax.set_xlim(-180, 180)
+        ax.set_ylim(-90, 90)
+        ax.set_xticks(np.arange(-180, 181, 10))
+        ax.set_yticks(np.arange(-90, 91, 10))
+        ax.set_xticklabels([])
+        ax.set_yticklabels([])
+        ax.spines['bottom'].set_visible(False)
+        ax.spines['left'].set_visible(False)
+        ax.grid(True, color='k', linewidth=0.5)
         ch_path = path / f'coronal_hole/{m_type}/'
         ch_path.mkdir(parents=True, exist_ok=True)
-        ch_name = f'CH_stop_{fits_date:%y%m%d}.png'
-        fig.savefig(ch_path / ch_name, bbox_inches='tight')
+        ch_name = f'CH_{fits_date:%y%m%d}.png'
+        fig.savefig(ch_path / ch_name, bbox_inches='tight', pad_inches=0)
 
     print(f'CR{carrot} date:{fits_date} {uid:10d} finished at ', datetime.now())
