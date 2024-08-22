@@ -42,7 +42,7 @@ from .models import (CoronalHole, CoronalHolePoint,
     MagneticLineSet, MagneticLine, MagneticLinePoint)
 
 
-test_date = date(2024, 8, 1)
+test_date = date(2024, 8, 21)
 zero_time = time(0, 0, 0, tzinfo=timezone.utc)
 
 def load_HEK_CH():
@@ -242,13 +242,13 @@ def full_plot(fits_fname, m_type, fits_date=None, plot_CH=False, carrot=None):
         data[:, 0] += 180 # longitude
         data[:, 1] += 90 # latitude
         data *= ratio
-        return int(data)
+        return data.astype(int)
     
     def narrow_data(data, ratio):
         data /= ratio
         data[:, 0] -= 180 # longitude
         data[:, 1] -= 90 # latitude
-        return int(data)
+        return data
 
     ph_map = fits2map(fits_fname)
     height, width = ph_map.data.shape
