@@ -483,6 +483,3 @@ def full_plot(fits_fname, m_type, fits_date=None, plot_CH=False, plot_contour=Fa
                     exec_time = datetime.now()
 
     print(f'CR{carrot} date:{fits_date} {uid:10d} finished in ', datetime.now())
-
-def delete_MLS_by_ID(id):
-    MagneticLineSet.objects.filter(id=id).delete()

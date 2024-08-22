@@ -24,6 +24,7 @@ class CoronalHoleContourSerializer(serializers.ModelSerializer):
         data = super().to_representation(instance)
         point_list = [str(point) for point in instance.points.all()]
         data['points'] = point_list
+        del data['ch']
         return data
 
 class CoronalHolePointSerializer(serializers.ModelSerializer):
@@ -48,7 +49,28 @@ class CoronalHoleSerializer(serializers.ModelSerializer):
         del data['s_type']
         return data
 
+class MagneticLinePointSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = MagneticLinePoint
+        fields = '__all__'
+
+class MagneticLineSerializer(serializers.ModelSerializer):
+    points = MagneticLinePointSerializer(many=True)
+
+    class Meta:
+        model = MagneticLine
+        fields = '__all__'
+    
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        point_list = [str(point) for point in instance.points.all()]
+        data['points'] = point_list
+        del data['lineset']
+        return data
+
 class MagneticLineSetSerializer(serializers.ModelSerializer):
+    lines = MagneticLineSerializer(many=True)
 
     class Meta:
         model = MagneticLineSet
@@ -56,18 +78,6 @@ class MagneticLineSetSerializer(serializers.ModelSerializer):
     
     def to_representation(self, instance):
         data = super().to_representation(instance)
-        data['type'] = ch_dict[instance.s_type]
+        data['type'] = ml_dict[instance.s_type]
         del data['s_type']
         return data
-
-class MagneticLineSerializer(serializers.ModelSerializer):
-
-    class Meta:
-        model = MagneticLine
-        fields = '__all__'
-
-class MagneticLinePointSerializer(serializers.ModelSerializer):
-
-    class Meta:
-        model = MagneticLinePoint
-        fields = '__all__'

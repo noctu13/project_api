@@ -1,4 +1,4 @@
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta
 
 from rest_framework import generics
 from django.db.models import Q
@@ -23,8 +23,8 @@ class EventsView(generics.ListAPIView):
             events_query = MagneticLineSet.objects.filter(s_type=short_type)
         if year and month and day:
             query_day = datetime.combine(date(year, month, day), zero_time)
-            query1 = Q(start_time__gt=query_day)
-            query2 = Q(start_time__lte=query_day + timedelta(days=1))
+            query1 = Q(start_time__gte=query_day)
+            query2 = Q(start_time__lt=query_day + timedelta(days=1))
             queryset = events_query.filter(query1 & query2).order_by(
                 'start_time')
         return queryset

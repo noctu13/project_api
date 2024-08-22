@@ -27,7 +27,7 @@ class CoronalHolePoint(models.Model):
     )
 
     def __str__(self):
-        return f'{self.lon} {self.lat} {self.B}'
+        return f'{self.lon} {self.lat} {self.Br}'
 
 
 class CoronalHoleContour(models.Model):
