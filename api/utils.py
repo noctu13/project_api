@@ -42,7 +42,7 @@ from .models import (CoronalHole, CoronalHolePoint,
     MagneticLineSet, MagneticLine, MagneticLinePoint)
 
 
-test_date = date(2024, 8, 21)
+test_date = date(2024, 1, 1)
 zero_time = time(0, 0, 0, tzinfo=timezone.utc)
 
 def load_HEK_CH():
@@ -239,21 +239,21 @@ def full_plot(fits_fname, m_type, fits_date=None, plot_CH=False, carrot=None):
         return data
     
     def expand_data(data, ratio, unpack=False):
+        exp_data = []
         if data.ndim == 1:
-            data = np.array([data])
+            exp_data = np.array([data])
             unpack = True
-        data[:, 0] += 180 # longitude
-        data[:, 1] += 90 # latitude
-        data *= ratio
+        exp_data[:, 0] += 180 # longitude
+        exp_data[:, 1] += 90 # latitude
+        exp_data *= ratio
         if unpack:
-            data = data[0]
-        return data.astype(int)
+            exp_data = exp_data[0]
+        return exp_data.astype(int)
     
     def narrow_data(data, ratio):
         data /= ratio
         data[:, 1] -= 180 # longitude
         data[:, 0] -= 90 # latitude
-        return data
 
     ph_map = fits2map(fits_fname)
     height, width = ph_map.data.shape
@@ -478,9 +478,9 @@ def full_plot(fits_fname, m_type, fits_date=None, plot_CH=False, carrot=None):
                 for contour in contours:
                     chc = CoronalHoleContour.objects.create(ch=ch)
                     contour = prob_reduce(contour, limit=1024)
-                    contour = narrow_data(contour, ratio)
+                    narrow_data(contour, ratio)
                     chc_pts_batch = []
-                    for lon, lat in contour:
+                    for lat, lon in contour:
                         point = CoronalHoleContourPoint(
                             lon=lon, lat=lat, contour=chc)
                         chc_pts_batch.append(point)

@@ -36,6 +36,13 @@ class EventsView(generics.ListAPIView):
         elif short_type in ml_dict:
             serializer = MagneticLineSetSerializer
         return serializer
+    
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        param = self.request.query_params.get('param')
+        if param:
+            context.update({param: True})
+        return context
 
 
 # написать эндпоинт - фильтрованная выдача media(ph/ss/sw date/cr stop/gong)?

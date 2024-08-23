@@ -43,8 +43,14 @@ class CoronalHoleSerializer(serializers.ModelSerializer):
     
     def to_representation(self, instance):
         data = super().to_representation(instance)
-        point_list = [str(point) for point in instance.points.all()]
-        data['points'] = point_list
+        is_short = self.context.get("short", None)
+        if is_short:
+            del data['contour']
+            del data['points']
+        else:
+            point_list = [str(point) for point in instance.points.all()]
+            data['points'] = point_list
+            
         data['type'] = ch_dict[instance.s_type]
         del data['s_type']
         return data
