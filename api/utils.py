@@ -120,7 +120,7 @@ def load_STOP_daily():
 
     def date_range(start_date: date, end_date: date):
         days = int((end_date - start_date).days)
-        for n in range(days):
+        for n in range(days + 1):
             yield start_date + timedelta(n)
 
     def fits_url(fits_date):
@@ -239,8 +239,9 @@ def full_plot(fits_fname, m_type, fits_date=None, plot_CH=False, carrot=None):
         return data
     
     def expand_data(data, ratio, unpack=False):
-        exp_data = []
-        if data.ndim == 1:
+        if data.ndim > 1:
+            exp_data = np.array(data)
+        else:
             exp_data = np.array([data])
             unpack = True
         exp_data[:, 0] += 180 # longitude
@@ -383,8 +384,8 @@ def full_plot(fits_fname, m_type, fits_date=None, plot_CH=False, carrot=None):
                 polarity=polarity_convector(field_line.polarity))
             lines_batch.append(line)
             for item in car_coords:
-                lat = float(item.lat.degree)
-                lon = float(item.lon.degree)
+                lon = item.lon.wrap_at('180d').degree
+                lat = item.lat.degree
                 point = MagneticLinePoint(
                     lon=lon,
                     lat=lat,
