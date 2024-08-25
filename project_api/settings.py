@@ -139,6 +139,5 @@ REST_FRAMEWORK = {
 }
 
 CRONJOBS = [
-    ('0 0 * * *', 'api.utils.load_SPOCA_CH_from_HEK'),
-    ('0 0 * * *', 'api.utils.load_STOP_maps'),
+    #('0 0 * * *', 'api.utils.load_STOP_daily'),
 ]

@@ -431,15 +431,13 @@ def full_plot(fits_fname, m_type, fits_date=None, plot_CH=False, carrot=None):
         fig = Figure(figsize=(24, 12), dpi=600)
         ax = fig.add_subplot()
         ax.set_facecolor('#808080')
-        colors = [mpl.cm.Spectral(each) for each in np.linspace(0, 1, len(unique_labels))]
 
         one_px_area = 1.4743437*10**14 # m^2 sun_surface/full_solid_angle
-        for k, col in zip(unique_labels, colors):
+        for k in unique_labels:
             class_member_mask = labels == k
             cluster = open_field_coords[class_member_mask & core_samples_mask]
             size = len(cluster)
             if k >= 0 and size:
-                ax.scatter(cluster[:, 0], cluster[:, 1], s=1, color=tuple(col))
                 ch = CoronalHole.objects.create(
                     start_time=start_time, end_time=end_time, s_type='SCH')
                 cluster_image = np.zeros((height, width), dtype=int)
@@ -447,6 +445,9 @@ def full_plot(fits_fname, m_type, fits_date=None, plot_CH=False, carrot=None):
                 cluster_image[expanded_cluster[:,1], expanded_cluster[:,0]] = 1
                 Br = ph_map.data[expanded_cluster[:,1], expanded_cluster[:,0]]
                 mag_sum = sum(Br)
+                ss_Br = ss_map.data[expanded_cluster[:,1], expanded_cluster[:,0]]
+                col = 'r' if ss_Br > 0 else 'b'
+                ax.scatter(cluster[:, 0], cluster[:, 1], s=1, color=col)
                 ch_pts_batch = []
                 batch_limit = 20000
                 for ind in range(size):
