@@ -1,3 +1,4 @@
+
 import random
 import shutil
 import requests
@@ -42,7 +43,7 @@ from .models import (CoronalHole, CoronalHolePoint,
     MagneticLineSet, MagneticLine, MagneticLinePoint)
 
 
-test_date = date(2024, 8, 1)
+test_date = date(2024, 5, 4)
 zero_time = time(0, 0, 0, tzinfo=timezone.utc)
 
 def load_HEK_CH():
@@ -120,7 +121,7 @@ def load_STOP_daily():
 
     def date_range(start_date: date, end_date: date):
         days = int((end_date - start_date).days)
-        for n in range(days + 1):
+        for n in range(days):
             yield start_date + timedelta(n)
 
     def fits_url(fits_date):
@@ -136,7 +137,7 @@ def load_STOP_daily():
         start_date = last_sch.start_time.date() + timedelta(days=1)
     except CoronalHole.DoesNotExist:
         start_date = test_date
-    end_date = date.today()
+    end_date = test_date + timedelta(days=1) # date.today()
     ph_path = settings.BASE_DIR / 'maps/synoptic/daily/photospheric/stop'
     ph_path.mkdir(parents=True, exist_ok=True)
     for fits_date in date_range(start_date, end_date):
@@ -239,10 +240,10 @@ def full_plot(fits_fname, m_type, fits_date=None, plot_CH=False, carrot=None):
         return new_data
     
     def narrow_data(data, ratio):
-        nar_data = np.array(data)
+        nar_data = np.array(data, dtype=float)
         nar_data /= ratio
-        nar_data[:, 1] -= 180 # longitude
-        nar_data[:, 0] -= 90 # latitude
+        nar_data[:, 0] -= 180 # longitude
+        nar_data[:, 1] -= 90 # latitude
         return nar_data
 
     ph_map = fits2map(fits_fname)
@@ -397,8 +398,8 @@ def full_plot(fits_fname, m_type, fits_date=None, plot_CH=False, carrot=None):
 
         pols = ph_field_lines.polarities.reshape(2 * height, height).T
         exp_coords = np.dstack(np.where(pols != 0))[0]
-        nar_coords = narrow_data(coords)
         ratio = height / 180
+        nar_coords = narrow_data(exp_coords, ratio)
         print(f'polarity matix {uid:10d} calculated in ', datetime.now() - exec_time)
         exec_time = datetime.now()
         
