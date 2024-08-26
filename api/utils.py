@@ -29,9 +29,9 @@ from sunpy.coordinates.sun import (
     carrington_rotation_number, carrington_rotation_time)
 from sunpy.coordinates.frames import HeliographicCarrington
 from sunpy.map import Map
-
 from pfsspy import tracing, utils
 from pfsspy.utils import is_full_sun_synoptic_map
+
 
 from django.http import HttpResponse
 from django.conf import settings
@@ -203,8 +203,8 @@ def full_plot(fits_fname, m_type, fits_date=None, plot_CH=False, carrot=None):
     
     def get_seeds(r_coef, divisor, frame):
         r = r_coef * const.R_sun
-        lon_1d = np.linspace(0, 2 * np.pi, 2 * divisor)
-        lat_1d = np.linspace(-np.pi / 2, np.pi / 2, divisor)
+        lon_1d = np.linspace(0, 2 * np.pi, 2 * divisor + 1)[:-1]
+        lat_1d = np.linspace(-np.pi / 2, np.pi / 2, divisor + 1)[:-1]
         lon, lat = np.meshgrid(lon_1d, lat_1d, indexing='ij')
         lon, lat = (lon * u.rad).ravel(), (lat * u.rad).ravel()
         return SkyCoord(lon, lat, r, frame=frame)
@@ -235,26 +235,15 @@ def full_plot(fits_fname, m_type, fits_date=None, plot_CH=False, carrot=None):
             reduction_factor = size / limit
             probability = 1 / reduction_factor
             mask = np.random.rand(size) < probability
-            data = data[mask] # not uniform
-        return data
-    
-    def expand_data(data, ratio, unpack=False):
-        if data.ndim > 1:
-            exp_data = np.array(data)
-        else:
-            exp_data = np.array([data])
-            unpack = True
-        exp_data[:, 0] += 180 # longitude
-        exp_data[:, 1] += 90 # latitude
-        exp_data *= ratio
-        if unpack:
-            exp_data = exp_data[0]
-        return exp_data.astype(int)
+            new_data = np.array(data)[mask] # not uniform
+        return new_data
     
     def narrow_data(data, ratio):
-        data /= ratio
-        data[:, 1] -= 180 # longitude
-        data[:, 0] -= 90 # latitude
+        nar_data = np.array(data)
+        nar_data /= ratio
+        nar_data[:, 1] -= 180 # longitude
+        nar_data[:, 0] -= 90 # latitude
+        return nar_data
 
     ph_map = fits2map(fits_fname)
     height, width = ph_map.data.shape
@@ -406,20 +395,15 @@ def full_plot(fits_fname, m_type, fits_date=None, plot_CH=False, carrot=None):
         print(f'PH seed ML {uid:10d} traced in ', datetime.now() - exec_time)
         exec_time = datetime.now()
 
-        open_field_coords = []
+        pols = ph_field_lines.polarities.reshape(2 * height, height).T
+        exp_coords = np.dstack(np.where(pols != 0))[0]
+        nar_coords = narrow_data(coords)
         ratio = height / 180
-        for field_line in ph_field_lines.open_field_lines:
-            coords = field_line.solar_footpoint
-            car_coords = coords.transform_to(HeliographicCarrington(obstime=obstime))
-            lon = car_coords.lon.wrap_at('180d').degree
-            lat = car_coords.lat.degree
-            open_field_coords.append((lon, lat))
-        open_field_coords = np.array(open_field_coords)
         print(f'polarity matix {uid:10d} calculated in ', datetime.now() - exec_time)
         exec_time = datetime.now()
         
         db = DBSCAN(eps=5, min_samples=10,
-            metric=spherical_metric).fit(open_field_coords)
+            metric=spherical_metric).fit(nar_coords)
         labels = db.labels_
         print(f'DBSCAN {uid:10d} calculated in ', datetime.now() - exec_time)
         exec_time = datetime.now()
@@ -435,18 +419,18 @@ def full_plot(fits_fname, m_type, fits_date=None, plot_CH=False, carrot=None):
         one_px_area = 1.4743437*10**14 # m^2 sun_surface/full_solid_angle
         for k in unique_labels:
             class_member_mask = labels == k
-            cluster = open_field_coords[class_member_mask & core_samples_mask]
+            cluster = nar_coords[class_member_mask & core_samples_mask]
             size = len(cluster)
             if k >= 0 and size:
                 ch = CoronalHole.objects.create(
                     start_time=start_time, end_time=end_time, s_type='SCH')
                 cluster_image = np.zeros((height, width), dtype=int)
-                expanded_cluster = expand_data(cluster, ratio)
+                expanded_cluster = exp_coords[class_member_mask & core_samples_mask]
                 cluster_image[expanded_cluster[:,1], expanded_cluster[:,0]] = 1
                 Br = ph_map.data[expanded_cluster[:,1], expanded_cluster[:,0]]
                 mag_sum = sum(Br)
                 first = expanded_cluster[0]
-                col = 'r' if ss_map.data[first[1], first[0]] > 0 else 'b'
+                col = 'r' if pols[first[1], first[0]] > 0 else 'b'
                 ax.scatter(cluster[:, 0], cluster[:, 1], s=1, color=col)
                 ch_pts_batch = []
                 batch_limit = 20000
@@ -467,7 +451,7 @@ def full_plot(fits_fname, m_type, fits_date=None, plot_CH=False, carrot=None):
                 reduced_cluster = prob_reduce(cluster, limit=1024)
                 center = median(reduced_cluster)
                 ch.lon, ch.lat = center
-                sol_lon, sol_lat = expand_data(center, ratio)
+                sol_lon, sol_lat = center[0] + 180, center[1] + 90
                 ch.sol = f'SOL{obstime:%Y-%m-%dT%H:%M}L{sol_lon:.2f}C{sol_lat:.2f}'
                 ch.area = size * one_px_area * 10**-12 # Mm^2
                 ch.mag_flux = mag_sum * one_px_area * 10**4 # Mx
@@ -480,7 +464,7 @@ def full_plot(fits_fname, m_type, fits_date=None, plot_CH=False, carrot=None):
                 for contour in contours:
                     chc = CoronalHoleContour.objects.create(ch=ch)
                     contour = prob_reduce(contour, limit=1024)
-                    narrow_data(contour, ratio)
+                    contour = narrow_data(contour, ratio)
                     chc_pts_batch = []
                     for lat, lon in contour:
                         point = CoronalHoleContourPoint(
