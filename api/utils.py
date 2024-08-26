@@ -42,7 +42,7 @@ from .models import (CoronalHole, CoronalHolePoint,
     MagneticLineSet, MagneticLine, MagneticLinePoint)
 
 
-test_date = date(2024, 1, 1)
+test_date = date(2024, 8, 1)
 zero_time = time(0, 0, 0, tzinfo=timezone.utc)
 
 def load_HEK_CH():
@@ -445,8 +445,8 @@ def full_plot(fits_fname, m_type, fits_date=None, plot_CH=False, carrot=None):
                 cluster_image[expanded_cluster[:,1], expanded_cluster[:,0]] = 1
                 Br = ph_map.data[expanded_cluster[:,1], expanded_cluster[:,0]]
                 mag_sum = sum(Br)
-                ss_Br = ss_map.data[expanded_cluster[:,1], expanded_cluster[:,0]]
-                col = 'r' if ss_Br > 0 else 'b'
+                first = expanded_cluster[0]
+                col = 'r' if ss_map.data[first[1], first[0]] > 0 else 'b'
                 ax.scatter(cluster[:, 0], cluster[:, 1], s=1, color=col)
                 ch_pts_batch = []
                 batch_limit = 20000
