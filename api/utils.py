@@ -153,12 +153,12 @@ def load_STOP_daily():
 
 def full_plot(fits_fname, m_type, fits_date=None, plot_CH=False, carrot=None):
     uid = random.randint(100000, 999999) # Time execution info
-    exec_time = datetime.now()
-    print(f'plot ML {uid:10d} started at ', exec_time)
+    xtime = exec_time = datetime.now()
+    print(f'full plot {uid:10d} started at ', exec_time)
         
-    def fits2map(fits_fname): # m_type, fits_date
-        data, header = fits.getdata(fits_fname, header=True)
+    def fits2map(fits_fname, m_type):
         if m_type == 'stop':
+            data, header = fits.getdata(fits_fname, header=True)
             data = np.flip(data, 0)
             header['CUNIT1'] = 'deg'
             header['CUNIT2'] = 'deg'
@@ -167,9 +167,12 @@ def full_plot(fits_fname, m_type, fits_date=None, plot_CH=False, carrot=None):
             header['CTYPE1'] = 'CRLN-CAR'
             header['CTYPE2'] = 'CRLT-CAR'
             header['CRVAL1'] = 180
-            if fits_date:
-                header['DATE'] = f'{fits_date:%Y-%m-%d}'
-        return Map(data, header)
+            return Map(data, header)
+        if m_type == 'gong':
+            gong_map = Map(fits_fname)
+            gong_map.meta['SHIFT'] = 180 - gong_map.meta['CRVAL1']
+            gong_map = utils.roll_map(gong_map, method='exact')
+            return gong_map
     
     def cea_to_car(m, method='interp'):
 
@@ -188,7 +191,7 @@ def full_plot(fits_fname, m_type, fits_date=None, plot_CH=False, carrot=None):
         header_out = m.wcs.to_header()
         header_out['CTYPE1'] = header_out['CTYPE1'][:5] + 'CAR'
         header_out['CTYPE2'] = header_out['CTYPE2'][:5] + 'CAR'
-        header_out['CDELT2'] = 1 / 2
+        header_out['CDELT2'] = header_out['CDELT1']
         wcs_out = WCS(header_out, fix=False)
         data_out = reproject(m, wcs_out, shape_out=m.data.shape,
             return_footprint=False)
@@ -211,8 +214,8 @@ def full_plot(fits_fname, m_type, fits_date=None, plot_CH=False, carrot=None):
         return SkyCoord(lon, lat, r, frame=frame)
     
     def spherical_metric(point1, point2):
-        lam = np.array([point1[0], point2[0]])
-        phi = np.array([point1[1], point2[1]])
+        lam = np.array([point1[1], point2[1]])
+        phi = np.array([point1[0], point2[0]])
         lam *= np.pi / 180 # radian convertion
         phi *= np.pi / 180
         d_phi = phi[1] - phi[0]
@@ -236,27 +239,34 @@ def full_plot(fits_fname, m_type, fits_date=None, plot_CH=False, carrot=None):
             reduction_factor = size / limit
             probability = 1 / reduction_factor
             mask = np.random.rand(size) < probability
-            new_data = np.array(data)[mask] # not uniform
-        return new_data
+            return np.array(data)[mask] # not uniform
+        else:
+            return data
     
     def narrow_data(data, ratio):
         nar_data = np.array(data, dtype=float)
         nar_data /= ratio
-        nar_data[:, 0] -= 180 # longitude
-        nar_data[:, 1] -= 90 # latitude
+        nar_data[:, 0] -= 90 # latitude
+        nar_data[:, 1] -= 180 # longitude
         return nar_data
 
-    ph_map = fits2map(fits_fname)
-    height, width = ph_map.data.shape
+    if m_type == 'stop':
+        car_ph_map = fits2map(fits_fname, m_type)
+        cea_ph_map = utils.car_to_cea(car_ph_map)
+    elif m_type == 'gong':
+        cea_ph_map = fits2map(fits_fname, m_type)
+        car_ph_map = cea_to_car(cea_ph_map)
+
+    height, width = car_ph_map.data.shape
     data_ratio = height / width
     path = settings.BASE_DIR / 'media/synoptic/'
 
     # plot photospheric figure
     fig = Figure()
-    ax = fig.add_subplot(projection=ph_map)
-    norm = ImageNormalize(stretch=HistEqStretch(ph_map.data))
-    ph_map.plot(axes=ax, cmap='bwr', norm=norm)
-    norm = cls.SymLogNorm(vmin=ph_map.min(), vmax=ph_map.max(),
+    ax = fig.add_subplot(projection=car_ph_map)
+    norm = ImageNormalize(stretch=HistEqStretch(car_ph_map.data))
+    car_ph_map.plot(axes=ax, cmap='bwr', norm=norm)
+    norm = cls.SymLogNorm(vmin=car_ph_map.min(), vmax=car_ph_map.max(),
         linthresh=1)
     cbar = fig.colorbar(mpl.cm.ScalarMappable(norm=norm, cmap='bwr'),
         ax=ax, fraction=0.047*data_ratio)
@@ -275,25 +285,23 @@ def full_plot(fits_fname, m_type, fits_date=None, plot_CH=False, carrot=None):
     ph_path = path / f'photospheric/{m_type}/'
     ph_path.mkdir(parents=True, exist_ok=True)
     fig.savefig(ph_path / ph_name, bbox_inches='tight')
-    print(f'PH fig {uid:10d} saved in ', datetime.now() - exec_time)
-    exec_time = datetime.now()
+    print(f'PH fig {uid:10d} saved')
 
     nrho, rss = 35, 2.5
-    cea_ph_map = utils.car_to_cea(ph_map)
     pfss_in = utils.pfsspy.Input(cea_ph_map, nrho, rss)
     pfss_out = utils.pfsspy.pfss(pfss_in)
     cea_ss_map = pfss_out.source_surface_br
-    ss_map = cea_to_car(cea_ss_map)
+    car_ss_map = cea_to_car(cea_ss_map)
     print(f'PFSS {uid:10d} calculated in ', datetime.now() - exec_time)
     exec_time = datetime.now()
     
     # plot source surface figure
     fig = Figure()
-    ax = fig.add_subplot(projection=ss_map)
-    for item in source_surface_pils(ss_map):
+    ax = fig.add_subplot(projection=car_ss_map)
+    for item in source_surface_pils(car_ss_map):
         ax.plot_coord(item, 'k')
     norm = cls.CenteredNorm()
-    ss_map.plot(axes=ax, cmap='bwr', norm=norm)
+    car_ss_map.plot(axes=ax, cmap='bwr', norm=norm)
     cbar = fig.colorbar(mpl.cm.ScalarMappable(cmap='bwr', norm=norm),
         ax=ax, fraction=0.047*data_ratio)
     cbar.ax.set_ylabel(r'$B_{r}$, G', rotation=-90)
@@ -310,18 +318,17 @@ def full_plot(fits_fname, m_type, fits_date=None, plot_CH=False, carrot=None):
     ss_path = path / f'source_surface/{m_type}/'
     ss_path.mkdir(parents=True, exist_ok=True)
     fig.savefig(ss_path / ss_name, bbox_inches='tight')
-    print(f'SS fig {uid:10d} saved in ', datetime.now() - exec_time)
-    exec_time = datetime.now()
+    print(f'SS fig {uid:10d} saved')
 
     # plot solar wind figure
-    W_s = 6.25 * (ss_map.data / ph_map.data) ** 2
-    sw_data = 393.2 + 192.9 * W_s + 3.94 * abs(ss_map.data) - 0.019 * abs(ph_map.data)
-    sw_map = Map(sw_data, ph_map.meta)
+    W_s = 6.25 * (car_ss_map.data / car_ph_map.data) ** 2
+    car_sw_data = 393.2 + 192.9 * W_s + 3.94 * abs(car_ss_map.data) - 0.019 * abs(car_ph_map.data)
+    car_sw_map = Map(car_sw_data, car_ph_map.meta)
 
     fig = Figure()
-    ax = fig.add_subplot(projection=sw_map)
-    norm = ImageNormalize(stretch=HistEqStretch(sw_map.data))
-    sw_map.plot(axes=ax, cmap='RdBu_r', norm=norm)
+    ax = fig.add_subplot(projection=car_sw_map)
+    norm = ImageNormalize(stretch=HistEqStretch(car_sw_map.data))
+    car_sw_map.plot(axes=ax, cmap='RdBu_r', norm=norm)
     norm = cls.Normalize(vmin=250, vmax=750)
     cbar = fig.colorbar(mpl.cm.ScalarMappable(cmap='RdBu_r', norm=norm),
         ax=ax, fraction=0.047*data_ratio)
@@ -339,14 +346,11 @@ def full_plot(fits_fname, m_type, fits_date=None, plot_CH=False, carrot=None):
     sw_path = path / f'solar_wind/{m_type}/'
     sw_path.mkdir(parents=True, exist_ok=True)
     fig.savefig(sw_path / sw_name, bbox_inches='tight')
-    print(f'SW fig {uid:10d} saved in ', datetime.now() - exec_time)
-    exec_time = datetime.now()
+    print(f'SW fig {uid:10d} saved')
 
     tracer = tracing.FortranTracer(max_steps=3000)
     ss_seeds = get_seeds(2.5, 16, pfss_out.coordinate_frame)
     ss_field_lines = tracer.trace(ss_seeds, pfss_out)
-    print(f'SS seed ML {uid:10d} traced in ', datetime.now() - exec_time)
-    exec_time = datetime.now()
 
     if fits_date:
         start_time = datetime.combine(fits_date, zero_time) # datetime.fromisoformat(ph_map.meta['DATE'])
@@ -369,11 +373,10 @@ def full_plot(fits_fname, m_type, fits_date=None, plot_CH=False, carrot=None):
     for field_line in ss_field_lines.open_field_lines:
         coords = field_line.coords
         if len(coords) > 1:
-            car_coords = coords.transform_to(HeliographicCarrington(obstime=obstime))
             line = MagneticLine(lineset=lineset,
                 polarity=polarity_convector(field_line.polarity))
             lines_batch.append(line)
-            for item in car_coords:
+            for item in coords:
                 lon = item.lon.wrap_at('180d').degree
                 lat = item.lat.degree
                 point = MagneticLinePoint(
@@ -383,27 +386,30 @@ def full_plot(fits_fname, m_type, fits_date=None, plot_CH=False, carrot=None):
                     line=line,
                 )
                 points_batch.append(point)
-        
     MagneticLine.objects.bulk_create(lines_batch)
     MagneticLinePoint.objects.bulk_create(points_batch)
     lines_batch, points_batch = [], []
-    print(f'SS seed ML {uid:10d} saved in ', datetime.now() - exec_time)
+    print(f'ML coords {uid:10d} saved in ', datetime.now() - exec_time)
     exec_time = datetime.now()
     
     if plot_CH:
         ph_seeds = get_seeds(1, height, pfss_out.coordinate_frame)
         ph_field_lines = tracer.trace(ph_seeds, pfss_out)
-        print(f'PH seed ML {uid:10d} traced in ', datetime.now() - exec_time)
+        print(f'CH_ML {uid:10d} traced in ', datetime.now() - exec_time)
         exec_time = datetime.now()
 
+        fig = Figure(figsize=(24, 12), dpi=600)
+        ax = fig.add_subplot()
+        ax.set_facecolor('#808080')
+
         pols = ph_field_lines.polarities.reshape(2 * height, height).T
-        exp_coords = np.dstack(np.where(pols != 0))[0]
+        exp_coords = np.dstack(np.where(pols != 0))[0] # (lat, lon)
         ratio = height / 180
         nar_coords = narrow_data(exp_coords, ratio)
-        print(f'polarity matix {uid:10d} calculated in ', datetime.now() - exec_time)
+        print(f'CH_PM {uid:10d} calculated in ', datetime.now() - exec_time)
         exec_time = datetime.now()
         
-        db = DBSCAN(eps=5, min_samples=10,
+        db = DBSCAN(eps=5, min_samples=5,
             metric=spherical_metric).fit(nar_coords)
         labels = db.labels_
         print(f'DBSCAN {uid:10d} calculated in ', datetime.now() - exec_time)
@@ -412,10 +418,6 @@ def full_plot(fits_fname, m_type, fits_date=None, plot_CH=False, carrot=None):
         unique_labels = set(labels)
         core_samples_mask = np.zeros_like(labels, dtype=bool)
         core_samples_mask[db.core_sample_indices_] = True
-
-        fig = Figure(figsize=(24, 12), dpi=600)
-        ax = fig.add_subplot()
-        ax.set_facecolor('#808080')
 
         one_px_area = 1.4743437*10**14 # m^2 sun_surface/full_solid_angle
         for k in unique_labels:
@@ -427,16 +429,16 @@ def full_plot(fits_fname, m_type, fits_date=None, plot_CH=False, carrot=None):
                     start_time=start_time, end_time=end_time, s_type='SCH')
                 cluster_image = np.zeros((height, width), dtype=int)
                 expanded_cluster = exp_coords[class_member_mask & core_samples_mask]
-                cluster_image[expanded_cluster[:,1], expanded_cluster[:,0]] = 1
-                Br = ph_map.data[expanded_cluster[:,1], expanded_cluster[:,0]]
+                cluster_image[expanded_cluster[:,0], expanded_cluster[:,1]] = 1
+                Br = car_ph_map.data[expanded_cluster[:,0], expanded_cluster[:,1]]
                 mag_sum = sum(Br)
                 first = expanded_cluster[0]
-                col = 'r' if pols[first[1], first[0]] > 0 else 'b'
-                ax.scatter(cluster[:, 0], cluster[:, 1], s=1, color=col)
+                col = 'r' if pols[first[0], first[1]] > 0 else 'b'
+                ax.scatter(cluster[:, 1], cluster[:, 0], s=1, color=col)
                 ch_pts_batch = []
                 batch_limit = 20000
                 for ind in range(size):
-                    lon, lat = cluster[ind]
+                    lat, lon = cluster[ind]
                     point = CoronalHolePoint(
                         lon=lon, lat=lat, Br=Br[ind], ch=ch)
                     ch_pts_batch.append(point)
@@ -446,13 +448,13 @@ def full_plot(fits_fname, m_type, fits_date=None, plot_CH=False, carrot=None):
                 if ch_pts_batch:
                     CoronalHolePoint.objects.bulk_create(ch_pts_batch)
                     ch_pts_batch = []
-                print(f'CH point {uid:10d} for {k}-label saved in ', datetime.now() - exec_time)
+                print(f'CH_PTS {uid:10d} for {k}-label saved in ', datetime.now() - exec_time)
                 exec_time = datetime.now()
                 
                 reduced_cluster = prob_reduce(cluster, limit=1024)
                 center = median(reduced_cluster)
-                ch.lon, ch.lat = center
-                sol_lon, sol_lat = center[0] + 180, center[1] + 90
+                ch.lat, ch.lon = center
+                sol_lat, sol_lon = center[0] + 90, center[1] + 180
                 ch.sol = f'SOL{obstime:%Y-%m-%dT%H:%M}L{sol_lon:.2f}C{sol_lat:.2f}'
                 ch.area = size * one_px_area * 10**-12 # Mm^2
                 ch.mag_flux = mag_sum * one_px_area * 10**4 # Mx
@@ -474,7 +476,7 @@ def full_plot(fits_fname, m_type, fits_date=None, plot_CH=False, carrot=None):
                     CoronalHoleContourPoint.objects.bulk_create(chc_pts_batch)
                     ax.plot(contour[:, 1], contour[:, 0], linewidth=1, color='k')
                 chc_pts_batch = []
-                print(f'CH contours {uid:10d} for {k}-label saved in ', datetime.now() - exec_time)
+                print(f'CH_CNT {uid:10d} for {k}-label saved in ', datetime.now() - exec_time)
                 exec_time = datetime.now()
         
         ax.set_xlim(-180, 180)
@@ -490,5 +492,6 @@ def full_plot(fits_fname, m_type, fits_date=None, plot_CH=False, carrot=None):
         ch_path.mkdir(parents=True, exist_ok=True)
         ch_name = f'CH_{fits_date:%y%m%d}.png'
         fig.savefig(ch_path / ch_name, bbox_inches='tight', pad_inches=0)
-
-    print(f'CR{carrot} date:{fits_date} {uid:10d} finished at ', datetime.now())
+    
+    xend = datetime.now()
+    print(f'program end at {xend} in {xend - xtime}')
