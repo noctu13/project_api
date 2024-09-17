@@ -28,7 +28,7 @@ from astropy.wcs import WCS
 from sunpy.net import hek, attrs
 from sunpy.coordinates.sun import (
     carrington_rotation_number, carrington_rotation_time)
-from sunpy.coordinates.frames import HeliographicCarrington
+from sunpy.coordinates.frames import HeliographicStonyhurst
 from sunpy.map import Map
 from pfsspy import tracing, utils
 from pfsspy.utils import is_full_sun_synoptic_map
@@ -43,7 +43,7 @@ from .models import (CoronalHole, CoronalHolePoint,
     MagneticLineSet, MagneticLine, MagneticLinePoint)
 
 
-test_date = date(2024, 5, 4)
+test_date = date(2024, 9, 17)
 zero_time = time(0, 0, 0, tzinfo=timezone.utc)
 
 def load_HEK_CH():
@@ -116,7 +116,7 @@ def load_STOP():
         full_plot(fits_fname, 'stop', carrot=cr_ind)
     return HttpResponse(True)
 
-def load_STOP_daily():
+def load_STOP_daily(test=None):
     session = requests.Session()
 
     def date_range(start_date: date, end_date: date):
@@ -131,13 +131,17 @@ def load_STOP_daily():
     def fits_exists(fits_date):
         return session.head(fits_url(fits_date)).status_code == 200
 
-    try:
-        last_sch = CoronalHole.objects.filter(
-            s_type='SCH').latest('start_time')
-        start_date = last_sch.start_time.date() + timedelta(days=1)
-    except CoronalHole.DoesNotExist:
+    if test:
         start_date = test_date
-    end_date = test_date + timedelta(days=1) # date.today()
+        end_date = test_date + timedelta(days=1)
+    else:
+        try:
+            last_sch = CoronalHole.objects.filter(
+                s_type='SCH').latest('start_time')
+            start_date = last_sch.start_time.date() + timedelta(days=1)
+        except CoronalHole.DoesNotExist:
+            start_date = test_date
+        end_date = date.today() + timedelta(days=1)
     ph_path = settings.BASE_DIR / 'maps/synoptic/daily/photospheric/stop'
     ph_path.mkdir(parents=True, exist_ok=True)
     for fits_date in date_range(start_date, end_date):
@@ -167,7 +171,8 @@ def full_plot(fits_fname, m_type, fits_date=None, plot_CH=False, carrot=None):
             header['CTYPE1'] = 'CRLN-CAR'
             header['CTYPE2'] = 'CRLT-CAR'
             header['CRVAL1'] = 180
-            return Map(data, header)
+            stop_map = Map(data, header).resample([360, 180] * u.pix) # improve performance
+            return stop_map
         if m_type == 'gong':
             gong_map = Map(fits_fname)
             gong_map.meta['SHIFT'] = 180 - gong_map.meta['CRVAL1']
@@ -377,7 +382,7 @@ def full_plot(fits_fname, m_type, fits_date=None, plot_CH=False, carrot=None):
                 polarity=polarity_convector(field_line.polarity))
             lines_batch.append(line)
             for item in coords:
-                lon = item.lon.wrap_at('180d').degree
+                lon = item.lon.degree - 180
                 lat = item.lat.degree
                 point = MagneticLinePoint(
                     lon=lon,
@@ -403,81 +408,81 @@ def full_plot(fits_fname, m_type, fits_date=None, plot_CH=False, carrot=None):
         ax.set_facecolor('#808080')
 
         pols = ph_field_lines.polarities.reshape(2 * height, height).T
-        exp_coords = np.dstack(np.where(pols != 0))[0] # (lat, lon)
-        ratio = height / 180
-        nar_coords = narrow_data(exp_coords, ratio)
-        print(f'CH_PM {uid:10d} calculated in ', datetime.now() - exec_time)
-        exec_time = datetime.now()
-        
-        db = DBSCAN(eps=5, min_samples=5,
-            metric=spherical_metric).fit(nar_coords)
-        labels = db.labels_
-        print(f'DBSCAN {uid:10d} calculated in ', datetime.now() - exec_time)
-        exec_time = datetime.now()
+        for polarity in [-1, 1]:
+            exp_coords = np.dstack(np.where(pols == polarity))[0] # (lat, lon)
+            ratio = height / 180
+            nar_coords = narrow_data(exp_coords, ratio)
+            print(f'CH_PM {uid:10d} calculated in ', datetime.now() - exec_time)
+            exec_time = datetime.now()
+            
+            db = DBSCAN(eps=5, min_samples=5,
+                metric=spherical_metric).fit(nar_coords)
+            labels = db.labels_
+            print(f'DBSCAN {uid:10d} calculated in ', datetime.now() - exec_time)
+            exec_time = datetime.now()
 
-        unique_labels = set(labels)
-        core_samples_mask = np.zeros_like(labels, dtype=bool)
-        core_samples_mask[db.core_sample_indices_] = True
+            unique_labels = set(labels)
+            core_samples_mask = np.zeros_like(labels, dtype=bool)
+            core_samples_mask[db.core_sample_indices_] = True
 
-        one_px_area = 1.4743437*10**14 # m^2 sun_surface/full_solid_angle
-        for k in unique_labels:
-            class_member_mask = labels == k
-            cluster = nar_coords[class_member_mask & core_samples_mask]
-            size = len(cluster)
-            if k >= 0 and size:
-                ch = CoronalHole.objects.create(
-                    start_time=start_time, end_time=end_time, s_type='SCH')
-                cluster_image = np.zeros((height, width), dtype=int)
-                expanded_cluster = exp_coords[class_member_mask & core_samples_mask]
-                cluster_image[expanded_cluster[:,0], expanded_cluster[:,1]] = 1
-                Br = car_ph_map.data[expanded_cluster[:,0], expanded_cluster[:,1]]
-                mag_sum = sum(Br)
-                first = expanded_cluster[0]
-                col = 'r' if pols[first[0], first[1]] > 0 else 'b'
-                ax.scatter(cluster[:, 1], cluster[:, 0], s=1, color=col)
-                ch_pts_batch = []
-                batch_limit = 20000
-                for ind in range(size):
-                    lat, lon = cluster[ind]
-                    point = CoronalHolePoint(
-                        lon=lon, lat=lat, Br=Br[ind], ch=ch)
-                    ch_pts_batch.append(point)
-                    if len(ch_pts_batch) >= batch_limit:
+            one_px_area = 1.4743437*10**14 # m^2 sun_surface/full_solid_angle
+            for k in unique_labels:
+                class_member_mask = labels == k
+                cluster = nar_coords[class_member_mask & core_samples_mask]
+                size = len(cluster)
+                if k >= 0 and size:
+                    ch = CoronalHole.objects.create(
+                        start_time=start_time, end_time=end_time, s_type='SCH')
+                    cluster_image = np.zeros((height, width), dtype=int)
+                    expanded_cluster = exp_coords[class_member_mask & core_samples_mask]
+                    cluster_image[expanded_cluster[:,0], expanded_cluster[:,1]] = 1
+                    Br = car_ph_map.data[expanded_cluster[:,0], expanded_cluster[:,1]]
+                    mag_sum = sum(Br)
+                    col = 'r' if polarity > 0 else 'b'
+                    ax.scatter(cluster[:, 1], cluster[:, 0], s=1, color=col)
+                    ch_pts_batch = []
+                    batch_limit = 20000
+                    for ind in range(size):
+                        lat, lon = cluster[ind]
+                        point = CoronalHolePoint(
+                            lon=lon, lat=lat, Br=Br[ind], ch=ch)
+                        ch_pts_batch.append(point)
+                        if len(ch_pts_batch) >= batch_limit:
+                            CoronalHolePoint.objects.bulk_create(ch_pts_batch)
+                            ch_pts_batch = []
+                    if ch_pts_batch:
                         CoronalHolePoint.objects.bulk_create(ch_pts_batch)
                         ch_pts_batch = []
-                if ch_pts_batch:
-                    CoronalHolePoint.objects.bulk_create(ch_pts_batch)
-                    ch_pts_batch = []
-                print(f'CH_PTS {uid:10d} for {k}-label saved in ', datetime.now() - exec_time)
-                exec_time = datetime.now()
-                
-                reduced_cluster = prob_reduce(cluster, limit=1024)
-                center = median(reduced_cluster)
-                ch.lat, ch.lon = center
-                sol_lat, sol_lon = center[0] + 90, center[1] + 180
-                ch.sol = f'SOL{obstime:%Y-%m-%dT%H:%M}L{sol_lon:.2f}C{sol_lat:.2f}'
-                ch.area = size * one_px_area * 10**-12 # Mm^2
-                ch.mag_flux = mag_sum * one_px_area * 10**4 # Mx
-                ch.avg_flux = mag_sum / size # G
-                ch.max_flux = max(Br, key=abs) # G
-                ch.save()
+                    print(f'CH_PTS {uid:10d} for {k}-label saved in ', datetime.now() - exec_time)
+                    exec_time = datetime.now()
+                    
+                    reduced_cluster = prob_reduce(cluster, limit=1024)
+                    center = median(reduced_cluster)
+                    ch.lat, ch.lon = center
+                    sol_lat, sol_lon = center[0] + 90, center[1] + 180
+                    ch.sol = f'SOL{obstime:%Y-%m-%dT%H:%M}L{sol_lon:.2f}C{sol_lat:.2f}'
+                    ch.area = size * one_px_area * 10**-12 # Mm^2
+                    ch.mag_flux = mag_sum * one_px_area * 10**4 # Mx
+                    ch.avg_flux = mag_sum / size # G
+                    ch.max_flux = max(Br, key=abs) # G
+                    ch.save()
 
-                cluster_image = binary_closing(cluster_image, disk(3))
-                contours = measure.find_contours(cluster_image, 0.5)
-                for contour in contours:
-                    chc = CoronalHoleContour.objects.create(ch=ch)
-                    contour = prob_reduce(contour, limit=1024)
-                    contour = narrow_data(contour, ratio)
+                    cluster_image = binary_closing(cluster_image, disk(3))
+                    contours = measure.find_contours(cluster_image, 0.5)
+                    for contour in contours:
+                        chc = CoronalHoleContour.objects.create(ch=ch)
+                        contour = prob_reduce(contour, limit=1024)
+                        contour = narrow_data(contour, ratio)
+                        chc_pts_batch = []
+                        for lat, lon in contour:
+                            point = CoronalHoleContourPoint(
+                                lon=lon, lat=lat, contour=chc)
+                            chc_pts_batch.append(point)
+                        CoronalHoleContourPoint.objects.bulk_create(chc_pts_batch)
+                        ax.plot(contour[:, 1], contour[:, 0], linewidth=1, color='k')
                     chc_pts_batch = []
-                    for lat, lon in contour:
-                        point = CoronalHoleContourPoint(
-                            lon=lon, lat=lat, contour=chc)
-                        chc_pts_batch.append(point)
-                    CoronalHoleContourPoint.objects.bulk_create(chc_pts_batch)
-                    ax.plot(contour[:, 1], contour[:, 0], linewidth=1, color='k')
-                chc_pts_batch = []
-                print(f'CH_CNT {uid:10d} for {k}-label saved in ', datetime.now() - exec_time)
-                exec_time = datetime.now()
+                    print(f'CH_CNT {uid:10d} for {k}-label saved in ', datetime.now() - exec_time)
+                    exec_time = datetime.now()
         
         ax.set_xlim(-180, 180)
         ax.set_ylim(-90, 90)
