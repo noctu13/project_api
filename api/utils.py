@@ -43,7 +43,7 @@ from .models import (CoronalHole, CoronalHolePoint,
     MagneticLineSet, MagneticLine, MagneticLinePoint)
 
 
-test_date = date(2024, 9, 17)
+test_date = date(2024, 1, 1)
 zero_time = time(0, 0, 0, tzinfo=timezone.utc)
 
 def load_HEK_CH():

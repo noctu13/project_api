@@ -140,5 +140,5 @@ REST_FRAMEWORK = {
 }
 
 CRONJOBS = [
-    #('0 0 * * *', 'api.utils.load_STOP_daily'),
+    ('0 0 * * *', 'api.utils.load_STOP_daily'),
 ]
